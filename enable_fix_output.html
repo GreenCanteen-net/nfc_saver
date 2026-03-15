@@ -36,11 +36,72 @@
         <tr style="background:#ffe0e0"><td><b>FIX_OUTPUT</b></td><td><b>ENABLED (1)</b></td></tr>
     </table>
     
-    <button onclick="writeNFC()">Write to Lamp (Enable FIX_OUTPUT)</button>
+    <button onclick="readNFC()">1. Read NFC (Debug)</button>
+    <button onclick="writeNFC()">2. Write to Lamp (Enable FIX_OUTPUT)</button>
     
     <p id="status"></p>
+    <pre id="debug" style="text-align:left; background:#f0f0f0; padding:10px; margin:20px; font-size:11px; max-height:300px; overflow:auto;"></pre>
 
     <script>
+    async function readNFC() {
+        const status = document.getElementById('status');
+        const debug = document.getElementById('debug');
+        debug.textContent = '';
+        
+        if (!('NDEFReader' in window)) {
+            status.innerHTML = '<span class="error">Web NFC not supported. Use Chrome on Android.</span>';
+            return;
+        }
+
+        try {
+            status.innerHTML = '<span class="info">Hold phone to lamp NFC to READ...</span>';
+            const ndef = new NDEFReader();
+            const controller = new AbortController();
+            
+            await ndef.scan({ signal: controller.signal });
+            
+            ndef.onreading = event => {
+                controller.abort();
+                debug.textContent = 'Serial Number: ' + event.serialNumber + '\n\n';
+                
+                let recordNum = 0;
+                for (const record of event.message.records) {
+                    debug.textContent += `Record ${recordNum}: type=${record.recordType}\n`;
+                    
+                    if (record.recordType === "url") {
+                        const decoder = new TextDecoder();
+                        const url = decoder.decode(record.data);
+                        debug.textContent += `URL length: ${url.length}\n`;
+                        debug.textContent += `URL: ${url}\n\n`;
+                        
+                        // Show byte positions
+                        debug.textContent += 'URL bytes (positions for block alignment):\n';
+                        for (let i = 0; i < Math.min(url.length, 200); i += 16) {
+                            const chunk = url.substring(i, i + 16);
+                            debug.textContent += `  [${i.toString().padStart(3)}]: "${chunk}"\n`;
+                        }
+                    } else if (record.data) {
+                        const arr = new Uint8Array(record.data.buffer);
+                        debug.textContent += `Data (${arr.length} bytes): `;
+                        debug.textContent += Array.from(arr.slice(0, 50)).map(b => b.toString(16).padStart(2, '0')).join(' ');
+                        if (arr.length > 50) debug.textContent += '...';
+                        debug.textContent += '\n';
+                    }
+                    recordNum++;
+                }
+                
+                status.innerHTML = '<span class="success">✓ Read complete. See debug output above.</span>';
+            };
+            
+            ndef.onreadingerror = () => {
+                status.innerHTML = '<span class="error">Error reading NFC tag</span>';
+            };
+            
+        } catch (error) {
+            status.innerHTML = '<span class="error">Error: ' + error.message + '</span>';
+        }
+    }
+
     async function writeNFC() {
         const status = document.getElementById('status');
         
@@ -69,7 +130,7 @@
                 't02n11v00000000x' +  // Daylight Control: Off
                 'x'.repeat(500);      // Padding
             
-            const url = 'https://nfc.ledcity.ch/?data=' + data + '&flag=exportsettings';
+            const url = 'https://nfc.ledcity.io/?data=' + data + '&flag=exportsettings';
             
             const ndef = new NDEFReader();
             await ndef.write({
