@@ -62,32 +62,52 @@
             
             ndef.onreading = event => {
                 controller.abort();
-                debug.textContent = 'Serial Number: ' + event.serialNumber + '\n\n';
+                debug.textContent = 'Serial Number: ' + event.serialNumber + '\n';
+                debug.textContent += 'Records found: ' + event.message.records.length + '\n\n';
                 
                 let recordNum = 0;
                 for (const record of event.message.records) {
-                    debug.textContent += `Record ${recordNum}: type=${record.recordType}\n`;
+                    debug.textContent += `=== Record ${recordNum} ===\n`;
+                    debug.textContent += `  recordType: "${record.recordType}"\n`;
+                    debug.textContent += `  mediaType: "${record.mediaType || 'none'}"\n`;
+                    debug.textContent += `  id: "${record.id || 'none'}"\n`;
+                    debug.textContent += `  encoding: "${record.encoding || 'none'}"\n`;
+                    debug.textContent += `  lang: "${record.lang || 'none'}"\n`;
                     
-                    if (record.recordType === "url") {
-                        const decoder = new TextDecoder();
-                        const url = decoder.decode(record.data);
-                        debug.textContent += `URL length: ${url.length}\n`;
-                        debug.textContent += `URL: ${url}\n\n`;
-                        
-                        // Show byte positions
-                        debug.textContent += 'URL bytes (positions for block alignment):\n';
-                        for (let i = 0; i < Math.min(url.length, 200); i += 16) {
-                            const chunk = url.substring(i, i + 16);
-                            debug.textContent += `  [${i.toString().padStart(3)}]: "${chunk}"\n`;
-                        }
-                    } else if (record.data) {
+                    if (record.data) {
                         const arr = new Uint8Array(record.data.buffer);
-                        debug.textContent += `Data (${arr.length} bytes): `;
-                        debug.textContent += Array.from(arr.slice(0, 50)).map(b => b.toString(16).padStart(2, '0')).join(' ');
-                        if (arr.length > 50) debug.textContent += '...';
-                        debug.textContent += '\n';
+                        debug.textContent += `  data length: ${arr.length} bytes\n`;
+                        
+                        // Try to decode as text
+                        try {
+                            const decoder = new TextDecoder();
+                            const text = decoder.decode(record.data);
+                            debug.textContent += `  as text: "${text.substring(0, 500)}"\n`;
+                            
+                            // Show 16-byte blocks
+                            if (text.length > 50) {
+                                debug.textContent += '\n  Block view:\n';
+                                for (let i = 0; i < Math.min(text.length, 400); i += 16) {
+                                    const chunk = text.substring(i, i + 16);
+                                    debug.textContent += `    [${i.toString().padStart(3)}]: "${chunk}"\n`;
+                                }
+                            }
+                        } catch(e) {
+                            debug.textContent += `  (not text decodable)\n`;
+                        }
+                        
+                        // Show raw hex
+                        debug.textContent += `  hex: ${Array.from(arr.slice(0, 100)).map(b => b.toString(16).padStart(2, '0')).join(' ')}\n`;
+                        if (arr.length > 100) debug.textContent += '  ...(truncated)\n';
+                    } else {
+                        debug.textContent += `  data: null\n`;
                     }
+                    debug.textContent += '\n';
                     recordNum++;
+                }
+                
+                if (event.message.records.length === 0) {
+                    debug.textContent += 'No NDEF records found on tag!\n';
                 }
                 
                 status.innerHTML = '<span class="success">✓ Read complete. See debug output above.</span>';
