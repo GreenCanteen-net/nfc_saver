@@ -84,12 +84,19 @@
                             const text = decoder.decode(record.data);
                             debug.textContent += `  as text: "${text.substring(0, 500)}"\n`;
                             
-                            // Show 16-byte blocks
+                            // Show 16-byte blocks - show more to see all params including n0b
                             if (text.length > 50) {
                                 debug.textContent += '\n  Block view:\n';
-                                for (let i = 0; i < Math.min(text.length, 400); i += 16) {
+                                for (let i = 0; i < Math.min(text.length, 600); i += 16) {
                                     const chunk = text.substring(i, i + 16);
                                     debug.textContent += `    [${i.toString().padStart(3)}]: "${chunk}"\n`;
+                                }
+                                debug.textContent += '\n  Looking for FIX_OUTPUT (n0b):\n';
+                                const n0bMatch = text.match(/n0bv([0-9a-f]{8})/i);
+                                if (n0bMatch) {
+                                    debug.textContent += `    Found n0b = ${n0bMatch[1]} (${parseInt(n0bMatch[1], 16) === 0 ? 'DISABLED' : 'ENABLED'})\n`;
+                                } else {
+                                    debug.textContent += '    n0b NOT FOUND in NFC data!\n';
                                 }
                             }
                         } catch(e) {
@@ -150,7 +157,7 @@
                 't02n11v00000000x' +  // Daylight Control: Off
                 'x'.repeat(500);      // Padding
             
-            const url = 'https://nfc.ledcity.io/?data=' + data + '&flag=exportsettings';
+            const url = 'https://nfc.ledcity.ch/?data=' + data + '&flag=exportsettings';
             
             const ndef = new NDEFReader();
             await ndef.write({
