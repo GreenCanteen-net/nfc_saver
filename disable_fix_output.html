@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Disable FIX_OUTPUT (Preserve Settings)</title>
+    <style>
+        body { font-family: Arial; padding: 20px; text-align: center; }
+        button { font-size: 20px; padding: 15px 30px; margin: 10px; }
+        .success { color: green; }
+        .error { color: red; }
+        .info { color: blue; }
+        #log { text-align: left; background: #f0f0f0; padding: 10px; margin: 20px; font-family: monospace; font-size: 12px; max-height: 300px; overflow-y: auto; }
+    </style>
+</head>
+<body>
+    <h1>Disable FIX_OUTPUT</h1>
+    <p>This tool reads current settings, adds FIX_OUTPUT=0, and writes back.</p>
+    
+    <button onclick="readNFC()">1. Read Current Settings</button>
+    <button onclick="writeNFC()" id="writeBtn" disabled>2. Write with FIX_OUTPUT=0</button>
+    
+    <p id="status"></p>
+    <div id="log"></div>
+
+    <script>
+    let currentData = null;
+    const PREFIX = 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx';
+    const SUFFIX_LENGTH = 600; // Approximate padding length
+    
+    function log(msg) {
+        const logDiv = document.getElementById('log');
+        logDiv.innerHTML += msg + '<br>';
+        logDiv.scrollTop = logDiv.scrollHeight;
+    }
+
+    function parseParams(data) {
+        // Extract parameters from URL data string
+        // Format: xt02nXXvYYYYYYYY
+        const params = {};
+        const regex = /xt(\d{2})n([0-9a-f]{2})v([0-9a-f]{8})/gi;
+        let match;
+        while ((match = regex.exec(data)) !== null) {
+            const type = match[1];
+            const num = match[2].toLowerCase();
+            const value = match[3].toLowerCase();
+            params[`t${type}n${num}`] = value;
+            log(`Found: type=${type} num=${num} value=${value}`);
+        }
+        return params;
+    }
+
+    function buildDataString(params) {
+        let data = PREFIX;
+        for (const [key, value] of Object.entries(params)) {
+            // key format: t02n01, value format: 0000000f
+            const type = key.substring(1, 3);
+            const num = key.substring(4, 6);
+            data += `xt${type}n${num}v${value}`;
+        }
+        // Add padding
+        while (data.length < 800) {
+            data += 'x';
+        }
+        return data;
+    }
+
+    async function readNFC() {
+        const status = document.getElementById('status');
+        document.getElementById('log').innerHTML = '';
+        
+        if (!('NDEFReader' in window)) {
+            status.innerHTML = '<span class="error">Web NFC not supported. Use Chrome on Android.</span>';
+            return;
+        }
+
+        try {
+            status.innerHTML = '<span class="info">Hold phone to lamp NFC...</span>';
+            const ndef = new NDEFReader();
+            const controller = new AbortController();
+            
+            await ndef.scan({ signal: controller.signal });
+            
+            ndef.onreading = event => {
+                controller.abort();
+                log('NFC tag detected!');
+                
+                for (const record of event.message.records) {
+                    if (record.recordType === "url") {
+                        const decoder = new TextDecoder();
+                        const url = decoder.decode(record.data);
+                        log('URL: ' + url.substring(0, 100) + '...');
+                        
+                        // Extract data parameter
+                        const match = url.match(/data=([^&]+)/);
+                        if (match) {
+                            currentData = parseParams(match[1]);
+                            
+                            // Check current FIX_OUTPUT status
+                            const fixOutput = currentData['t02n0b'];
+                            if (fixOutput) {
+                                log(`<b>Current FIX_OUTPUT (n0b): ${fixOutput} (${parseInt(fixOutput, 16) === 0 ? 'DISABLED' : 'ENABLED'})</b>`);
+                            } else {
+                                log('<b>FIX_OUTPUT (n0b): not set in NFC</b>');
+                            }
+                            
+                            document.getElementById('writeBtn').disabled = false;
+                            status.innerHTML = '<span class="success">✓ Read complete. Now tap "Write" button.</span>';
+                        } else {
+                            status.innerHTML = '<span class="error">Could not parse URL data</span>';
+                        }
+                    }
+                }
+            };
+            
+            ndef.onreadingerror = () => {
+                status.innerHTML = '<span class="error">Error reading NFC tag</span>';
+            };
+            
+        } catch (error) {
+            status.innerHTML = '<span class="error">Error: ' + error.message + '</span>';
+        }
+    }
+
+    async function writeNFC() {
+        const status = document.getElementById('status');
+        
+        if (!currentData) {
+            status.innerHTML = '<span class="error">Read settings first!</span>';
+            return;
+        }
+
+        try {
+            // Add/overwrite FIX_OUTPUT = 0
+            currentData['t02n0b'] = '00000000';
+            log('<b>Setting FIX_OUTPUT (t02n0b) = 00000000</b>');
+            
+            const dataString = buildDataString(currentData);
+            const url = 'https://nfc.ledcity.ch/?data=' + dataString + '&flag=exportsettings';
+            
+            log('Writing URL (' + url.length + ' chars)...');
+            
+            status.innerHTML = '<span class="info">Hold phone to lamp NFC...</span>';
+            const ndef = new NDEFReader();
+            
+            await ndef.write({
+                records: [{ recordType: "url", data: url }]
+            });
+            
+            log('<span class="success">✓ Write successful!</span>');
+            status.innerHTML = '<span class="success">✓ Done! Lamp will reboot and disable FIX_OUTPUT.</span>';
+            
+        } catch (error) {
+            status.innerHTML = '<span class="error">Error: ' + error.message + '</span>';
+            log('Error: ' + error.message);
+        }
+    }
+    </script>
+</body>
+</html>
