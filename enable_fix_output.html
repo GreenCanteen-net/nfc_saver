@@ -53,20 +53,20 @@
             status.innerHTML = '<span class="info">Hold phone to lamp NFC...</span>';
             
             // Fixed parameters + FIX_OUTPUT=1
-            // n01=15(0x0F), n02=30(0x1E), n03=50(0x32), n04=10(0x0A), n05=0, n06=100(0x64), n07=1, n09=20(0x14), n0a=60(0x3C), n0b=1, n0c=245(0xF5), n11=0
-            const data = 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' +
-                'xt02n01v0000000f' +  // Holdtime Main: 15s
-                'xt02n02v0000001e' +  // Holdtime Base: 30s
-                'xt02n03v00000032' +  // Brightness Main: 50%
-                'xt02n04v0000000a' +  // Brightness Base: 10%
-                'xt02n05v00000000' +  // Brightness Standby: 0%
-                'xt02n06v00000064' +  // Brightness Fix: 100%
-                'xt02n07v00000001' +  // Standby Mode: On
-                'xt02n09v00000014' +  // Rise Time: 20
-                'xt02n0av0000003c' +  // Fall Time: 60
-                'xt02n0bv00000001' +  // FIX_OUTPUT: ENABLED
-                'xt02n0cv000000f5' +  // Radar Sensitivity: 245
-                'xt02n11v00000000' +  // Daylight Control: Off
+            // Format: tTTnNNvVVVVVVVVx (16 chars each, starts with 't', ends with 'x')
+            const data = 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' +  // 31 chars padding (blocks 3-4)
+                't02n01v0000000fx' +  // Holdtime Main: 15s
+                't02n02v0000001ex' +  // Holdtime Base: 30s
+                't02n03v00000032x' +  // Brightness Main: 50%
+                't02n04v0000000ax' +  // Brightness Base: 10%
+                't02n05v00000000x' +  // Brightness Standby: 0%
+                't02n06v00000064x' +  // Brightness Fix: 100%
+                't02n07v00000001x' +  // Standby Mode: On
+                't02n09v00000014x' +  // Rise Time: 20
+                't02n0av0000003cx' +  // Fall Time: 60
+                't02n0bv00000001x' +  // FIX_OUTPUT: ENABLED
+                't02n0cv000000f5x' +  // Radar Sensitivity: 245
+                't02n11v00000000x' +  // Daylight Control: Off
                 'x'.repeat(500);      // Padding
             
             const url = 'https://nfc.ledcity.ch/?data=' + data + '&flag=exportsettings';
