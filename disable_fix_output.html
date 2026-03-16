@@ -1,36 +1,252 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Disable FIX_OUTPUT</title>
+    <title>Disable FIX_OUTPUT – NFC Saver</title>
     <style>
-        body { font-family: Arial; padding: 20px; text-align: center; }
-        button { font-size: 24px; padding: 20px 40px; margin: 20px; background: #00aa00; color: white; border: none; border-radius: 10px; }
-        button:disabled { background: #ccc; }
-        .success { color: green; }
-        .error { color: red; }
-        .info { color: blue; }
-        table { margin: 20px auto; border-collapse: collapse; }
-        td, th { border: 1px solid #ccc; padding: 8px; text-align: left; }
+        :root {
+            color-scheme: light;
+            --bg: #f4f1ea;
+            --panel: #fffdf8;
+            --text: #1f1a14;
+            --muted: #6a5d4d;
+            --border: #d8cdbf;
+            --accent: #18654b;
+            --accent-2: #9c3d1e;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            font-family: Georgia, "Times New Roman", serif;
+            color: var(--text);
+            background:
+                radial-gradient(circle at top left, rgba(24, 101, 75, 0.12), transparent 30%),
+                radial-gradient(circle at bottom right, rgba(156, 61, 30, 0.06), transparent 35%),
+                var(--bg);
+            display: grid;
+            place-items: start center;
+            padding: 24px;
+        }
+
+        main {
+            width: min(760px, 100%);
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 32px;
+            box-shadow: 0 18px 50px rgba(31, 26, 20, 0.08);
+        }
+
+        .back {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.9rem;
+            color: var(--muted);
+            text-decoration: none;
+            margin-bottom: 20px;
+            transition: color 120ms ease;
+        }
+        .back:hover { color: var(--text); }
+
+        .page-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 8px;
+        }
+
+        .label {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 999px;
+            font-size: 0.8rem;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: white;
+            background: var(--accent);
+        }
+
+        h1 {
+            margin: 0;
+            font-size: clamp(1.6rem, 4vw, 2.4rem);
+            line-height: 1.1;
+        }
+
+        .info-box {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            background: rgba(24, 101, 75, 0.07);
+            border: 1px solid rgba(24, 101, 75, 0.22);
+            border-radius: 12px;
+            padding: 14px 16px;
+            margin: 16px 0 24px;
+            color: var(--accent);
+            font-size: 0.95rem;
+            line-height: 1.5;
+        }
+
+        .settings-section {
+            margin-bottom: 24px;
+        }
+
+        .settings-section h3 {
+            margin: 0 0 12px;
+            font-size: 1rem;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.95rem;
+        }
+
+        th {
+            background: rgba(31, 26, 20, 0.04);
+            padding: 10px 14px;
+            text-align: left;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--muted);
+            border-bottom: 1px solid var(--border);
+        }
+
+        td {
+            padding: 10px 14px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        tr:last-child td { border-bottom: none; }
+
+        tr.highlight td { background: rgba(24, 101, 75, 0.06); }
+
+        .preserve-note {
+            margin: 12px 0 0;
+            font-size: 0.85rem;
+            color: var(--muted);
+            font-style: italic;
+        }
+
+        .actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin: 24px 0;
+        }
+
+        button {
+            flex: 1 1 auto;
+            min-width: 180px;
+            font-family: inherit;
+            font-size: 1rem;
+            font-weight: 600;
+            padding: 14px 24px;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: transform 120ms ease, box-shadow 120ms ease, opacity 120ms ease;
+        }
+
+        button:not(:disabled):hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(31, 26, 20, 0.12);
+        }
+
+        button:not(:disabled):active {
+            transform: translateY(0);
+        }
+
+        #btnRead {
+            background: var(--text);
+            color: var(--panel);
+        }
+
+        #btnWrite {
+            background: var(--accent);
+            color: white;
+        }
+
+        button:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        #status {
+            margin: 0;
+            padding: 12px 16px;
+            border-radius: 10px;
+            font-size: 0.95rem;
+            min-height: 44px;
+            line-height: 1.5;
+        }
+
+        #status:not(:empty) {
+            background: rgba(31, 26, 20, 0.04);
+            border: 1px solid var(--border);
+        }
+
+        .success { color: var(--accent); }
+        .error   { color: #c0392b; }
+        .info    { color: #2563eb; }
+        .warning { color: var(--accent-2); }
+
+        #debug {
+            text-align: left;
+            background: rgba(31, 26, 20, 0.04);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px;
+            margin-top: 16px;
+            font-size: 0.78rem;
+            font-family: "Courier New", monospace;
+            max-height: 360px;
+            overflow: auto;
+            color: var(--muted);
+            line-height: 1.6;
+        }
+
+        #debug:empty { display: none; }
     </style>
 </head>
 <body>
-    <h1>Disable FIX_OUTPUT</h1>
-    <p>Restore normal lamp operation (motion detection enabled)</p>
-    
-    <h3>Settings to modify:</h3>
-    <table>
-        <tr><th>Parameter</th><th>New Value</th></tr>
-        <tr style="background:#e0ffe0"><td><b>FIX_OUTPUT</b></td><td><b>DISABLED (0)</b></td></tr>
-    </table>
-    <p><i>All other settings will be preserved from the lamp's current configuration.</i></p>
-    
-    <button onclick="readAndPrepare()" id="btnRead">1. Read Current Config</button>
-    <button onclick="writeNFC()" id="btnWrite" disabled>2. Write Changes</button>
-    
-    <p id="status"></p>
-    <pre id="debug" style="text-align:left; background:#f0f0f0; padding:10px; margin:20px; font-size:11px; max-height:400px; overflow:auto;"></pre>
+    <main>
+        <a class="back" href="index.html">&#8592; NFC Saver</a>
+
+        <div class="page-header">
+            <span class="label">Disable</span>
+            <h1>Disable FIX_OUTPUT</h1>
+        </div>
+
+        <div class="info-box">
+            ✓ <span>Restores normal lamp operation — motion detection and automatic dimming re-enabled.</span>
+        </div>
+
+        <div class="settings-section">
+            <h3>Settings to modify</h3>
+            <table>
+                <tr><th>Parameter</th><th>New Value</th></tr>
+                <tr class="highlight"><td><b>FIX_OUTPUT</b></td><td><b>DISABLED (0)</b></td></tr>
+            </table>
+            <p class="preserve-note">All other settings will be preserved from the lamp's current configuration.</p>
+        </div>
+
+        <div class="actions">
+            <button onclick="readAndPrepare()" id="btnRead">1. Read Current Config</button>
+            <button onclick="writeNFC()" id="btnWrite" disabled>2. Write Changes</button>
+        </div>
+
+        <p id="status"></p>
+        <pre id="debug"></pre>
+    </main>
 
     <script>
     let currentT02Params = {};  // Store only t02 parameters
