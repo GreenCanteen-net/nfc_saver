@@ -1,36 +1,205 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Disable FIX_OUTPUT</title>
     <style>
-        body { font-family: Arial; padding: 20px; text-align: center; }
-        button { font-size: 24px; padding: 20px 40px; margin: 20px; background: #00aa00; color: white; border: none; border-radius: 10px; }
-        button:disabled { background: #ccc; }
-        .success { color: green; }
-        .error { color: red; }
-        .info { color: blue; }
-        table { margin: 20px auto; border-collapse: collapse; }
-        td, th { border: 1px solid #ccc; padding: 8px; text-align: left; }
+        :root {
+            --primary:    #212c56;
+            --accent:     #ffff66;
+            --grey-light: #ebebeb;
+            --grey-mid:   #909090;
+            --grey-dark:  #5b5b5b;
+            --white:      #ffffff;
+            --black:      #000000;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            font-family: Arial, Helvetica, sans-serif;
+            background: var(--grey-light);
+            color: var(--black);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        header {
+            width: 100%;
+            background: var(--primary);
+            color: var(--white);
+            padding: 0 24px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            min-height: 56px;
+        }
+
+        header a {
+            color: var(--accent);
+            text-decoration: none;
+            font-size: 0.85rem;
+        }
+
+        header a:hover { text-decoration: underline; }
+
+        header h1 {
+            margin: 0;
+            font-size: 1.25rem;
+            font-weight: 700;
+        }
+
+        main {
+            width: min(720px, 100%);
+            padding: 32px 24px 48px;
+        }
+
+        .info-box {
+            background: var(--white);
+            color: var(--primary);
+            border-left: 5px solid var(--primary);
+            border-radius: 2px;
+            padding: 12px 16px;
+            margin-bottom: 24px;
+            font-size: 0.95rem;
+        }
+
+        h3 {
+            margin: 0 0 12px;
+            font-size: 1rem;
+            font-weight: 700;
+            color: var(--primary);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 12px;
+            background: var(--white);
+            border: 1px solid var(--grey-mid);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+
+        th {
+            background: var(--primary);
+            color: var(--white);
+            padding: 10px 14px;
+            text-align: left;
+            font-size: 0.875rem;
+            font-weight: 700;
+            letter-spacing: 0.03em;
+        }
+
+        td {
+            padding: 10px 14px;
+            font-size: 0.9rem;
+            border-top: 1px solid var(--grey-light);
+        }
+
+        tr.changed {
+            background: var(--grey-light);
+        }
+
+        tr.changed td { font-weight: 700; }
+
+        .hint {
+            color: var(--grey-dark);
+            font-size: 0.875rem;
+            margin: 0 0 24px;
+            font-style: italic;
+        }
+
+        .actions {
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+
+        button {
+            font-family: Arial, Helvetica, sans-serif;
+            font-size: 1rem;
+            font-weight: 700;
+            padding: 14px 28px;
+            border: none;
+            border-radius: 2px;
+            cursor: pointer;
+            transition: opacity 120ms ease, box-shadow 120ms ease;
+        }
+
+        button:not(:disabled):hover { opacity: 0.88; box-shadow: 0 4px 12px rgba(33,44,86,0.2); }
+
+        #btnRead {
+            background: var(--primary);
+            color: var(--white);
+        }
+
+        #btnWrite {
+            background: var(--grey-mid);
+            color: var(--white);
+        }
+
+        button:disabled {
+            background: var(--grey-light);
+            color: var(--grey-mid);
+            cursor: not-allowed;
+        }
+
+        #status {
+            font-size: 1rem;
+            min-height: 1.5em;
+            margin-bottom: 16px;
+        }
+
+        .success { color: #1a6e2e; font-weight: 700; }
+        .error   { color: #b91c1c; font-weight: 700; }
+        .info    { color: var(--primary); font-weight: 700; }
+
+        #debug {
+            text-align: left;
+            background: var(--primary);
+            color: #c8d4f0;
+            padding: 14px 16px;
+            font-size: 0.8rem;
+            line-height: 1.55;
+            max-height: 360px;
+            overflow-y: auto;
+            border-radius: 2px;
+            white-space: pre-wrap;
+        }
     </style>
 </head>
 <body>
-    <h1>Disable FIX_OUTPUT</h1>
-    <p>Restore normal lamp operation (motion detection enabled)</p>
-    
-    <h3>Settings to modify:</h3>
-    <table>
-        <tr><th>Parameter</th><th>New Value</th></tr>
-        <tr style="background:#e0ffe0"><td><b>FIX_OUTPUT</b></td><td><b>DISABLED (0)</b></td></tr>
-    </table>
-    <p><i>Core settings preserved from lamp. Firmware restores additional params on boot.</i></p>
-    
-    <button onclick="readAndPrepare()" id="btnRead">1. Read Current Config</button>
-    <button onclick="writeNFC()" id="btnWrite" disabled>2. Write Changes</button>
-    
-    <p id="status"></p>
-    <pre id="debug" style="text-align:left; background:#f0f0f0; padding:10px; margin:20px; font-size:11px; max-height:400px; overflow:auto;"></pre>
+    <header>
+        <a href="index.html">← Back</a>
+        <h1>Disable FIX_OUTPUT</h1>
+    </header>
+
+    <main>
+        <div class="info-box">Restore normal lamp operation (motion detection enabled).</div>
+
+        <h3>Settings to modify</h3>
+        <table>
+            <tr><th>Parameter</th><th>New Value</th></tr>
+            <tr class="changed"><td><b>FIX_OUTPUT</b></td><td><b>DISABLED (0)</b></td></tr>
+        </table>
+        <p class="hint">Core settings are preserved from the lamp. Firmware restores additional params on boot.</p>
+
+        <div class="actions">
+            <button onclick="readAndPrepare()" id="btnRead">1. Read Current Config</button>
+            <button onclick="writeNFC()" id="btnWrite" disabled>2. Write Changes</button>
+        </div>
+
+        <p id="status"></p>
+        <pre id="debug"></pre>
+    </main>
 
     <script>
     // Only write the 12 known-safe params (1-2 byte unsigned values).
