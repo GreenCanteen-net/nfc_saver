@@ -33,8 +33,16 @@
     <pre id="debug" style="text-align:left; background:#f0f0f0; padding:10px; margin:20px; font-size:11px; max-height:400px; overflow:auto;"></pre>
 
     <script>
-    let currentParams = {};  // Store parsed parameters by type: {t01: {num: val}, t02: {num: val}}
-    let rawUrlData = '';  // Store raw URL for reference
+    let currentT02Params = {};  // Store only t02 parameters
+    
+    const PARAM_NAMES = {
+        '01': 'Holdtime Main', '02': 'Holdtime Base',
+        '03': 'Brightness Main', '04': 'Brightness Base',
+        '05': 'Brightness Standby', '06': 'Brightness Fix',
+        '07': 'Standby Mode', '09': 'Rise Time',
+        '0a': 'Fall Time', '0b': 'FIX_OUTPUT',
+        '0c': 'Radar Sensitivity', '11': 'Daylight Control'
+    };
     
     async function readAndPrepare() {
         const status = document.getElementById('status');
@@ -42,8 +50,7 @@
         const btnWrite = document.getElementById('btnWrite');
         debug.textContent = '';
         btnWrite.disabled = true;
-        currentParams = {};
-        rawUrlData = '';
+        currentT02Params = {};
         
         if (!('NDEFReader' in window)) {
             status.innerHTML = '<span class="error">Web NFC not supported. Use Chrome on Android.</span>';
@@ -64,62 +71,46 @@
                 for (const record of event.message.records) {
                     if (record.data) {
                         const text = decoder.decode(record.data);
-                        rawUrlData = text;
-                        debug.textContent = 'Read ' + text.length + ' bytes\n\n';
+                        debug.textContent = 'Read ' + text.length + ' bytes\n';
+                        debug.textContent += 'Domain: ' + (text.includes('ledcity.io') ? 'ledcity.io OK' : text.includes('ledcity.ch') ? 'ledcity.ch BAD' : 'unknown BAD') + '\n\n';
                         
-                        // Parse ALL parameters (t01, t02, etc)
+                        // Parse ALL params but only store t02
+                        let t01Count = 0;
                         const allMatches = text.matchAll(/t([0-9a-f]{2})n([0-9a-f]{2})v([0-9a-f]{8})x/gi);
                         for (const match of allMatches) {
                             const type = match[1].toLowerCase();
                             const num = match[2].toLowerCase();
                             const val = match[3].toLowerCase();
-                            if (!currentParams[type]) currentParams[type] = {};
-                            currentParams[type][num] = val;
+                            if (type === '01') t01Count++;
+                            else if (type === '02') currentT02Params[num] = val;
                         }
                         
-                        // Display t01 params if any
-                        if (currentParams['01']) {
-                            debug.textContent += 'Found t01 (device) parameters: ' + Object.keys(currentParams['01']).length + '\n';
+                        if (t01Count > 0) {
+                            debug.textContent += 'Found ' + t01Count + ' t01 (device info) params (skipped)\n';
                         }
                         
                         // Display t02 params  
                         debug.textContent += '\nCurrent t02 (setting) parameters:\n';
-                        const t02 = currentParams['02'] || {};
-                        
-                        for (const num of Object.keys(t02).sort()) {
-                            const val = t02[num];
-                            
-                            // Decode known params for display
+                        for (const num of Object.keys(currentT02Params).sort()) {
+                            const val = currentT02Params[num];
                             const intVal = parseInt(val, 16);
-                            let name = 'n' + num;
-                            if (num === '01') name = 'Holdtime Main';
-                            else if (num === '02') name = 'Holdtime Base';
-                            else if (num === '03') name = 'Brightness Main';
-                            else if (num === '04') name = 'Brightness Base';
-                            else if (num === '05') name = 'Brightness Standby';
-                            else if (num === '06') name = 'Brightness Fix';
-                            else if (num === '07') name = 'Standby Mode';
-                            else if (num === '09') name = 'Rise Time';
-                            else if (num === '0a') name = 'Fall Time';
-                            else if (num === '0b') name = 'FIX_OUTPUT';
-                            else if (num === '0c') name = 'Radar Sensitivity';
-                            else if (num === '11') name = 'Daylight Control';
-                            
-                            debug.textContent += `  ${name} (n${num}): ${val} = ${intVal}\n`;
+                            const name = PARAM_NAMES[num] || ('n' + num);
+                            const highlight = (num === '0b') ? ' <<<' : '';
+                            debug.textContent += `  ${name} (n${num}): ${val} = ${intVal}${highlight}\n`;
                         }
                         
-                        const t02Params = currentParams['02'] || {};
-                        debug.textContent += '\nFound ' + Object.keys(t02Params).length + ' t02 parameters.\n';
+                        debug.textContent += '\nFound ' + Object.keys(currentT02Params).length + ' t02 parameters.\n';
                         
-                        // Show current values
-                        if (t02Params['0b']) {
-                            const fixVal = parseInt(t02Params['0b'], 16);
-                            debug.textContent += '\nCurrent FIX_OUTPUT: ' + (fixVal === 0 ? 'DISABLED' : 'ENABLED') + '\n';
+                        if (currentT02Params['0b']) {
+                            const fixVal = parseInt(currentT02Params['0b'], 16);
+                            debug.textContent += '\nCurrent FIX_OUTPUT: ' + (fixVal === 0 ? 'DISABLED' : 'ENABLED -> will set to 0') + '\n';
+                        } else {
+                            debug.textContent += '\nWARNING: FIX_OUTPUT (n0b) not found!\n';
                         }
                         
-                        debug.textContent += '\n✓ Ready to write. Click "Write Changes" button.\n';
+                        debug.textContent += '\nReady. UNPLUG lamp, then click "Write Changes".\n';
                         btnWrite.disabled = false;
-                        status.innerHTML = '<span class="success">✓ Config read. Now UNPLUG lamp, then click "Write Changes".</span>';
+                        status.innerHTML = '<span class="success">Config read. Now UNPLUG lamp, then click "Write Changes".</span>';
                     }
                 }
             };
@@ -137,7 +128,7 @@
         const status = document.getElementById('status');
         const debug = document.getElementById('debug');
         
-        if (Object.keys(currentParams).length === 0) {
+        if (Object.keys(currentT02Params).length === 0) {
             status.innerHTML = '<span class="error">No config loaded. Read first!</span>';
             return;
         }
@@ -150,52 +141,73 @@
         try {
             status.innerHTML = '<span class="info">Hold phone to lamp NFC (should be UNPLUGGED)...</span>';
             
-            // Modify only FIX_OUTPUT in t02 params
-            if (!currentParams['02']) currentParams['02'] = {};
-            currentParams['02']['0b'] = '00000000';  // FIX_OUTPUT = DISABLED
+            // Modify only FIX_OUTPUT
+            currentT02Params['0b'] = '00000000';  // FIX_OUTPUT = DISABLED
             
-            // Build params string from ALL param types (t01, t02, etc) sorted
+            // Build params string - ONLY t02 params (no t01 device info)
             let params = '';
-            const types = Object.keys(currentParams).sort();
-            for (const type of types) {
-                const sortedNums = Object.keys(currentParams[type]).sort();
-                for (const num of sortedNums) {
-                    params += 't' + type + 'n' + num + 'v' + currentParams[type][num] + 'x';
-                }
+            const sortedNums = Object.keys(currentT02Params).sort();
+            for (const num of sortedNums) {
+                params += 't02n' + num + 'v' + currentT02Params[num] + 'x';
             }
             
             debug.textContent += '\n--- WRITING ---\n';
+            debug.textContent += 'Writing ONLY t02 params (no t01 device info)\n';
             debug.textContent += 'Modified: FIX_OUTPUT=0 (DISABLED)\n';
-            debug.textContent += 'Params length: ' + params.length + ' chars\n';
+            debug.textContent += 'Total t02 params: ' + sortedNums.length + '\n';
+            debug.textContent += 'Params string length: ' + params.length + ' chars\n';
             
-            // Build URL: params come IMMEDIATELY after data=, padding at end
-            // URL structure: https://nfc.ledcity.io/?data= (29 chars) + params + x-padding = 860 total
+            // Show what we're writing
+            debug.textContent += '\nParams being written:\n';
+            for (const num of sortedNums) {
+                const highlight = (num === '0b') ? ' <<< CHANGED' : '';
+                debug.textContent += '  t02n' + num + 'v' + currentT02Params[num] + 'x' + highlight + '\n';
+            }
+            
+            // Build URL: https://nfc.ledcity.io/?data= (29 chars) + params + x-padding = 860 total
             const urlPrefix = 'https://nfc.ledcity.io/?data=';
             const paddingNeeded = 860 - urlPrefix.length - params.length;
+            
+            debug.textContent += '\nURL prefix: ' + urlPrefix.length + ' chars\n';
+            debug.textContent += 'Params: ' + params.length + ' chars\n';
+            debug.textContent += 'Padding: ' + Math.max(0, paddingNeeded) + ' x chars\n';
+            
             let url = urlPrefix + params + 'x'.repeat(Math.max(0, paddingNeeded));
             
-            // Truncate if somehow too long
             if (url.length > 860) {
+                debug.textContent += 'WARNING: Truncating from ' + url.length + ' to 860\n';
                 url = url.substring(0, 860);
             }
             
             debug.textContent += 'Final URL length: ' + url.length + ' (must be 860)\n';
+            
+            // Verify FIX_OUTPUT is in the URL
+            const fixCheck = url.match(/t02n0bv([0-9a-f]{8})x/i);
+            if (fixCheck) {
+                debug.textContent += 'Verify t02n0b in URL: ' + fixCheck[1] + (fixCheck[1] === '00000000' ? ' DISABLED OK' : ' NOT DISABLED!') + '\n';
+            } else {
+                debug.textContent += 'ERROR: t02n0b NOT FOUND in URL!\n';
+            }
             
             if (url.length !== 860) {
                 status.innerHTML = '<span class="error">ERROR: URL length is ' + url.length + '</span>';
                 return;
             }
             
+            debug.textContent += '\nURL preview: ' + url.substring(0, 100) + '...\n';
+            
             const ndef = new NDEFReader();
             await ndef.write({ records: [{ recordType: "url", data: url }] });
             
-            debug.textContent += '\n✓ Write complete!\n';
-            debug.textContent += 'FIX_OUTPUT = DISABLED\n';
+            debug.textContent += '\nWrite complete!\n';
+            debug.textContent += 'FIX_OUTPUT = DISABLED (0)\n';
+            debug.textContent += '\nNow PLUG IN the lamp and verify with a read.\n';
             
-            status.innerHTML = '<span class="success">✓ Done! Now PLUG IN the lamp for normal operation.</span>';
+            status.innerHTML = '<span class="success">Done! Now PLUG IN the lamp for normal operation.</span>';
             
         } catch (error) {
             status.innerHTML = '<span class="error">Error: ' + error.message + '</span>';
+            debug.textContent += '\nERROR: ' + error.message + '\n';
         }
     }
     </script>
