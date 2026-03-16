@@ -144,9 +144,7 @@
             // Fixed parameters + FIX_OUTPUT=1
             // Format: tTTnNNvVVVVVVVVx (16 chars each, starts with 't', ends with 'x')
             // IMPORTANT: Match exact format from web_nfc_fa_tool:
-            // - https:// (8) + nfc.ledcity.io/?data= (21) + 31 x's = 60 chars prefix
-            // - params + padding = 800 chars
-            // - Total: 860 chars exactly
+            // Total URL must be exactly 860 chars
             
             // Build params (12 settings * 16 chars = 192 chars)
             const params = 
@@ -163,17 +161,39 @@
                 't02n0cv000000f5x' +  // Radar Sensitivity: 245
                 't02n11v00000000x';   // Daylight Control: Off
             
-            // Pad params to exactly 800 chars (params are in 'result' variable in original code)
-            const result = params + 'x'.repeat(800 - params.length);
+            console.log('params.length:', params.length);  // Should be 192
             
-            // Build URL prefix (domain + path padded to 52 chars)
+            // Result = params + x padding to exactly 800 chars total
+            const xPadding = 800 - params.length;
+            console.log('xPadding:', xPadding);  // Should be 608
+            const result = params + 'x'.repeat(xPadding);
+            console.log('result.length:', result.length);  // Should be 800
+            
+            // URL base: domain/?data= padded to 52 chars
             const urlBase = 'nfc.ledcity.io/?data=';  // 21 chars
-            const urlPadded = urlBase + 'x'.repeat(52 - urlBase.length);  // 31 x's
+            console.log('urlBase.length:', urlBase.length);  // Should be 21
+            const urlXPadding = 52 - urlBase.length;
+            console.log('urlXPadding:', urlXPadding);  // Should be 31
+            const urlPadded = urlBase + 'x'.repeat(urlXPadding);
+            console.log('urlPadded.length:', urlPadded.length);  // Should be 52
             
-            // Final URL: protocol + padded domain/path + params
-            const url = 'https://' + urlPadded + result;  // 8 + 52 + 800 = 860 chars
+            // Final URL: https:// + urlPadded + result
+            const url = 'https://' + urlPadded + result;
+            console.log('Final URL length:', url.length);  // MUST be 860
             
-            console.log('URL length:', url.length);  // Should be 860
+            if (url.length !== 860) {
+                status.innerHTML = '<span class="error">ERROR: URL length is ' + url.length + ', expected 860!</span>';
+                return;
+            }
+            
+            // Show debug info
+            const debug = document.getElementById('debug');
+            debug.textContent = 'Writing URL with lengths:\n';
+            debug.textContent += '  params: ' + params.length + ' (expect 192)\n';
+            debug.textContent += '  result: ' + result.length + ' (expect 800)\n';
+            debug.textContent += '  urlPadded: ' + urlPadded.length + ' (expect 52)\n';
+            debug.textContent += '  final URL: ' + url.length + ' (expect 860)\n\n';
+            debug.textContent += 'URL preview:\n' + url.substring(0, 100) + '...\n';
             
             const ndef = new NDEFReader();
             await ndef.write({
