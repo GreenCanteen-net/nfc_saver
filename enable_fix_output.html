@@ -36,7 +36,8 @@
     <pre id="debug" style="text-align:left; background:#f0f0f0; padding:10px; margin:20px; font-size:11px; max-height:400px; overflow:auto;"></pre>
 
     <script>
-    let currentParams = {};  // Store parsed t02 parameters
+    let currentParams = {};  // Store parsed parameters by type: {t01: {num: val}, t02: {num: val}}
+    let rawUrlData = '';  // Store raw URL for reference
     
     async function readAndPrepare() {
         const status = document.getElementById('status');
@@ -45,6 +46,7 @@
         debug.textContent = '';
         btnWrite.disabled = true;
         currentParams = {};
+        rawUrlData = '';
         
         if (!('NDEFReader' in window)) {
             status.innerHTML = '<span class="error">Web NFC not supported. Use Chrome on Android.</span>';
@@ -65,11 +67,27 @@
                 for (const record of event.message.records) {
                     if (record.data) {
                         const text = decoder.decode(record.data);
+                        rawUrlData = text;
                         debug.textContent = 'Read ' + text.length + ' bytes\n\n';
                         
-                        // Parse all t02 parameters (settings)
+                        // Parse ALL parameters (t01, t02, etc)
+                        const allMatches = text.matchAll(/t([0-9a-f]{2})n([0-9a-f]{2})v([0-9a-f]{8})x/gi);
+                        for (const match of allMatches) {
+                            const type = match[1].toLowerCase();
+                            const num = match[2].toLowerCase();
+                            const val = match[3].toLowerCase();
+                            if (!currentParams[type]) currentParams[type] = {};
+                            currentParams[type][num] = val;
+                        }
+                        
+                        // Display t01 params if any
+                        if (currentParams['01']) {
+                            debug.textContent += 'Found t01 (device) parameters: ' + Object.keys(currentParams['01']).length + '\n';
+                        }
+                        
+                        // Display t02 params  
+                        debug.textContent += '\nCurrent t02 (setting) parameters:\n';
                         const matches = text.matchAll(/t02n([0-9a-f]{2})v([0-9a-f]{8})x/gi);
-                        debug.textContent += 'Current t02 (setting) parameters:\n';
                         
                         for (const match of matches) {
                             const num = match[1].toLowerCase();
@@ -95,15 +113,16 @@
                             debug.textContent += `  ${name} (n${num}): ${val} = ${intVal}\n`;
                         }
                         
-                        debug.textContent += '\nFound ' + Object.keys(currentParams).length + ' t02 parameters.\n';
+                        const t02Params = currentParams['02'] || {};
+                        debug.textContent += '\nFound ' + Object.keys(t02Params).length + ' t02 parameters.\n';
                         
                         // Show current values
-                        if (currentParams['0b']) {
-                            const fixVal = parseInt(currentParams['0b'], 16);
+                        if (t02Params['0b']) {
+                            const fixVal = parseInt(t02Params['0b'], 16);
                             debug.textContent += '\nCurrent FIX_OUTPUT: ' + (fixVal === 0 ? 'DISABLED' : 'ENABLED') + '\n';
                         }
-                        if (currentParams['06']) {
-                            const fixBright = parseInt(currentParams['06'], 16);
+                        if (t02Params['06']) {
+                            const fixBright = parseInt(t02Params['06'], 16);
                             debug.textContent += 'Current Brightness Fix: ' + fixBright + '%\n';
                             document.getElementById('fixBrightness').value = fixBright;
                         }
@@ -141,16 +160,20 @@
         try {
             status.innerHTML = '<span class="info">Hold phone to lamp NFC (should be UNPLUGGED)...</span>';
             
-            // Modify only FIX_OUTPUT and Brightness Fix
+            // Modify only FIX_OUTPUT and Brightness Fix in t02 params
             const newFixBrightness = parseInt(document.getElementById('fixBrightness').value) || 100;
-            currentParams['0b'] = '00000001';  // FIX_OUTPUT = ENABLED
-            currentParams['06'] = newFixBrightness.toString(16).padStart(8, '0');  // Brightness Fix
+            if (!currentParams['02']) currentParams['02'] = {};
+            currentParams['02']['0b'] = '00000001';  // FIX_OUTPUT = ENABLED
+            currentParams['02']['06'] = newFixBrightness.toString(16).padStart(8, '0');  // Brightness Fix
             
-            // Build params string from current params (sorted by param number)
-            const sortedKeys = Object.keys(currentParams).sort();
+            // Build params string from ALL param types (t01, t02, etc) sorted
             let params = '';
-            for (const num of sortedKeys) {
-                params += 't02n' + num + 'v' + currentParams[num] + 'x';
+            const types = Object.keys(currentParams).sort();
+            for (const type of types) {
+                const sortedNums = Object.keys(currentParams[type]).sort();
+                for (const num of sortedNums) {
+                    params += 't' + type + 'n' + num + 'v' + currentParams[type][num] + 'x';
+                }
             }
             
             debug.textContent += '\n--- WRITING ---\n';
