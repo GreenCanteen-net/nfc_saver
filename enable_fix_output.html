@@ -157,18 +157,14 @@
             debug.textContent += 'Modified: FIX_OUTPUT=1, Brightness Fix=' + newFixBrightness + '%\n';
             debug.textContent += 'Params length: ' + params.length + ' chars\n';
             
-            // Pad to 800 chars
-            const result = params + 'x'.repeat(Math.max(0, 800 - params.length));
+            // Build URL: params come IMMEDIATELY after data=, padding at end
+            // URL structure: https://nfc.ledcity.io/?data= (29 chars) + params + x-padding = 860 total
+            const urlPrefix = 'https://nfc.ledcity.io/?data=';
+            const paddingNeeded = 860 - urlPrefix.length - params.length;
+            let url = urlPrefix + params + 'x'.repeat(Math.max(0, paddingNeeded));
             
-            // Build URL (must be exactly 860 chars)
-            const urlBase = 'nfc.ledcity.io/?data=';
-            const urlPadded = urlBase + 'x'.repeat(52 - urlBase.length);
-            let url = 'https://' + urlPadded + result;
-            
-            // Adjust to exactly 860 chars
-            if (url.length < 860) {
-                url = 'https://' + urlPadded + params + 'x'.repeat(860 - 8 - 52 - params.length);
-            } else if (url.length > 860) {
+            // Truncate if somehow too long
+            if (url.length > 860) {
                 url = url.substring(0, 860);
             }
             
