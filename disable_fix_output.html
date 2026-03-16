@@ -24,7 +24,7 @@
         <tr><th>Parameter</th><th>New Value</th></tr>
         <tr style="background:#e0ffe0"><td><b>FIX_OUTPUT</b></td><td><b>DISABLED (0)</b></td></tr>
     </table>
-    <p><i>All other settings will be preserved from the lamp's current configuration.</i></p>
+    <p><i>Core settings preserved from lamp. Firmware restores additional params on boot.</i></p>
     
     <button onclick="readAndPrepare()" id="btnRead">1. Read Current Config</button>
     <button onclick="writeNFC()" id="btnWrite" disabled>2. Write Changes</button>
@@ -33,16 +33,27 @@
     <pre id="debug" style="text-align:left; background:#f0f0f0; padding:10px; margin:20px; font-size:11px; max-height:400px; overflow:auto;"></pre>
 
     <script>
-    let currentT02Params = {};  // Store only t02 parameters
-    
-    const PARAM_NAMES = {
-        '01': 'Holdtime Main', '02': 'Holdtime Base',
-        '03': 'Brightness Main', '04': 'Brightness Base',
-        '05': 'Brightness Standby', '06': 'Brightness Fix',
-        '07': 'Standby Mode', '09': 'Rise Time',
-        '0a': 'Fall Time', '0b': 'FIX_OUTPUT',
-        '0c': 'Radar Sensitivity', '11': 'Daylight Control'
+    // Only write the 12 known-safe params (1-2 byte unsigned values).
+    // The firmware adds any missing NFC params via Parameter_store_nfc() on boot.
+    // Signed params (X/Y/Z_POSITION) and 4-byte params (GROUP_0-3) are excluded
+    // because their 4-byte NFC representation can cause sign-extension issues
+    // in the firmware's get_signed_value() / check_and_set() functions.
+    const SAFE_PARAMS = {
+        '01': { name: 'Holdtime Main',     defaultVal: '0000000f' },
+        '02': { name: 'Holdtime Base',     defaultVal: '0000001e' },
+        '03': { name: 'Brightness Main',   defaultVal: '00000032' },
+        '04': { name: 'Brightness Base',   defaultVal: '0000000a' },
+        '05': { name: 'Brightness Standby',defaultVal: '00000000' },
+        '06': { name: 'Brightness Fix',    defaultVal: '00000064' },
+        '07': { name: 'Standby Mode',      defaultVal: '00000000' },
+        '09': { name: 'Rise Time',         defaultVal: '00000005' },
+        '0a': { name: 'Fall Time',         defaultVal: '0000000a' },
+        '0b': { name: 'FIX_OUTPUT',        defaultVal: '00000000' },
+        '0c': { name: 'Radar Sensitivity', defaultVal: '00000050' },
+        '11': { name: 'Daylight Control',  defaultVal: '00000000' }
     };
+    
+    let currentParams = {};
     
     async function readAndPrepare() {
         const status = document.getElementById('status');
@@ -50,7 +61,7 @@
         const btnWrite = document.getElementById('btnWrite');
         debug.textContent = '';
         btnWrite.disabled = true;
-        currentT02Params = {};
+        currentParams = {};
         
         if (!('NDEFReader' in window)) {
             status.innerHTML = '<span class="error">Web NFC not supported. Use Chrome on Android.</span>';
@@ -72,41 +83,50 @@
                     if (record.data) {
                         const text = decoder.decode(record.data);
                         debug.textContent = 'Read ' + text.length + ' bytes\n';
-                        debug.textContent += 'Domain: ' + (text.includes('ledcity.io') ? 'ledcity.io OK' : text.includes('ledcity.ch') ? 'ledcity.ch BAD' : 'unknown BAD') + '\n\n';
+                        debug.textContent += 'Domain: ' + (text.includes('ledcity.io') ? 'ledcity.io OK' : 'UNKNOWN') + '\n\n';
                         
-                        // Parse ALL params but only store t02
-                        let t01Count = 0;
+                        // Parse all params from NFC
+                        const allParams = {};
+                        let totalFound = 0;
                         const allMatches = text.matchAll(/t([0-9a-f]{2})n([0-9a-f]{2})v([0-9a-f]{8})x/gi);
                         for (const match of allMatches) {
                             const type = match[1].toLowerCase();
                             const num = match[2].toLowerCase();
                             const val = match[3].toLowerCase();
-                            if (type === '01') t01Count++;
-                            else if (type === '02') currentT02Params[num] = val;
+                            allParams[type + '_' + num] = val;
+                            totalFound++;
                         }
                         
-                        if (t01Count > 0) {
-                            debug.textContent += 'Found ' + t01Count + ' t01 (device info) params (skipped)\n';
+                        debug.textContent += 'Total params on NFC: ' + totalFound + '\n\n';
+                        
+                        // Extract only the 12 safe params
+                        debug.textContent += 'Core params (will be written back):\n';
+                        for (const num of Object.keys(SAFE_PARAMS).sort()) {
+                            const key = '02_' + num;
+                            const info = SAFE_PARAMS[num];
+                            if (allParams[key]) {
+                                currentParams[num] = allParams[key];
+                                const intVal = parseInt(allParams[key], 16);
+                                const highlight = (num === '0b') ? ' <<<' : '';
+                                debug.textContent += '  ' + info.name + ' (n' + num + '): ' + allParams[key] + ' = ' + intVal + highlight + '\n';
+                            } else {
+                                currentParams[num] = info.defaultVal;
+                                debug.textContent += '  ' + info.name + ' (n' + num + '): NOT FOUND, default ' + info.defaultVal + '\n';
+                            }
                         }
                         
-                        // Display t02 params  
-                        debug.textContent += '\nCurrent t02 (setting) parameters:\n';
-                        for (const num of Object.keys(currentT02Params).sort()) {
-                            const val = currentT02Params[num];
-                            const intVal = parseInt(val, 16);
-                            const name = PARAM_NAMES[num] || ('n' + num);
-                            const highlight = (num === '0b') ? ' <<<' : '';
-                            debug.textContent += `  ${name} (n${num}): ${val} = ${intVal}${highlight}\n`;
+                        // Show skipped params
+                        const skippedNums = Object.keys(allParams)
+                            .filter(k => k.startsWith('02_') && !SAFE_PARAMS[k.substring(3)])
+                            .map(k => k.substring(3));
+                        if (skippedNums.length > 0) {
+                            debug.textContent += '\nSkipped params (firmware restores on boot): ' + skippedNums.join(', ') + '\n';
                         }
                         
-                        debug.textContent += '\nFound ' + Object.keys(currentT02Params).length + ' t02 parameters.\n';
+                        debug.textContent += '\nUsing ' + Object.keys(currentParams).length + ' safe params.\n';
                         
-                        if (currentT02Params['0b']) {
-                            const fixVal = parseInt(currentT02Params['0b'], 16);
-                            debug.textContent += '\nCurrent FIX_OUTPUT: ' + (fixVal === 0 ? 'DISABLED' : 'ENABLED -> will set to 0') + '\n';
-                        } else {
-                            debug.textContent += '\nWARNING: FIX_OUTPUT (n0b) not found!\n';
-                        }
+                        const fixVal = parseInt(currentParams['0b'], 16);
+                        debug.textContent += 'Current FIX_OUTPUT: ' + (fixVal === 0 ? 'DISABLED' : 'ENABLED -> will set to 0') + '\n';
                         
                         debug.textContent += '\nReady. UNPLUG lamp, then click "Write Changes".\n';
                         btnWrite.disabled = false;
@@ -128,7 +148,7 @@
         const status = document.getElementById('status');
         const debug = document.getElementById('debug');
         
-        if (Object.keys(currentT02Params).length === 0) {
+        if (Object.keys(currentParams).length === 0) {
             status.innerHTML = '<span class="error">No config loaded. Read first!</span>';
             return;
         }
@@ -142,45 +162,36 @@
             status.innerHTML = '<span class="info">Hold phone to lamp NFC (should be UNPLUGGED)...</span>';
             
             // Modify only FIX_OUTPUT
-            currentT02Params['0b'] = '00000000';  // FIX_OUTPUT = DISABLED
+            currentParams['0b'] = '00000000';  // FIX_OUTPUT = DISABLED
             
-            // Build params string - ONLY t02 params (no t01 device info)
+            // Build params string - only 12 safe params in sorted order
             let params = '';
-            const sortedNums = Object.keys(currentT02Params).sort();
+            const sortedNums = Object.keys(currentParams).sort();
             for (const num of sortedNums) {
-                params += 't02n' + num + 'v' + currentT02Params[num] + 'x';
+                params += 't02n' + num + 'v' + currentParams[num] + 'x';
             }
             
             debug.textContent += '\n--- WRITING ---\n';
-            debug.textContent += 'Writing ONLY t02 params (no t01 device info)\n';
             debug.textContent += 'Modified: FIX_OUTPUT=0 (DISABLED)\n';
-            debug.textContent += 'Total t02 params: ' + sortedNums.length + '\n';
+            debug.textContent += 'Total params: ' + sortedNums.length + '\n';
             debug.textContent += 'Params string length: ' + params.length + ' chars\n';
             
             // Show what we're writing
             debug.textContent += '\nParams being written:\n';
             for (const num of sortedNums) {
+                const name = SAFE_PARAMS[num] ? SAFE_PARAMS[num].name : num;
                 const highlight = (num === '0b') ? ' <<< CHANGED' : '';
-                debug.textContent += '  t02n' + num + 'v' + currentT02Params[num] + 'x' + highlight + '\n';
+                debug.textContent += '  t02n' + num + 'v' + currentParams[num] + 'x' + highlight + '\n';
             }
             
             // Build URL with MANDATORY 31 x's padding after data=
-            // NFC memory blocks 3-4 MUST be "=xxxxxxxxxxxxxxx" + "xxxxxxxxxxxxxxxx"
-            // The firmware's check_config_data() validates these bytes exactly!
-            // Params go into blocks 5-54 (= positions 60-859 of URL, = 800 bytes)
-            // URL: https:// (8) + nfc.ledcity.io/?data= (21) + 31 x's + params + x-padding = 860
             const urlPrefix = 'https://nfc.ledcity.io/?data=';
-            const blockPadding = 'x'.repeat(31);  // MUST have 31 x's for blocks 3-4
+            const blockPadding = 'x'.repeat(31);  // blocks 3-4 validation
             const paramArea = 800;  // blocks 5-54 = 50 blocks * 16 bytes
-            const trailingPad = 'x'.repeat(Math.max(0, paramArea - params.length));
-            let url = urlPrefix + blockPadding + params + trailingPad;
+            const trailingPad = 'x'.repeat(paramArea - params.length);
+            const url = urlPrefix + blockPadding + params + trailingPad;
             
-            if (url.length > 860) {
-                debug.textContent += 'WARNING: Truncating from ' + url.length + ' to 860\n';
-                url = url.substring(0, 860);
-            }
-            
-            debug.textContent += 'Final URL length: ' + url.length + ' (must be 860)\n';
+            debug.textContent += '\nFinal URL length: ' + url.length + ' (must be 860)\n';
             
             // Verify FIX_OUTPUT is in the URL
             const fixCheck = url.match(/t02n0bv([0-9a-f]{8})x/i);
@@ -191,11 +202,11 @@
             }
             
             if (url.length !== 860) {
-                status.innerHTML = '<span class="error">ERROR: URL length is ' + url.length + '</span>';
+                status.innerHTML = '<span class="error">ERROR: URL length is ' + url.length + ', expected 860</span>';
                 return;
             }
             
-            debug.textContent += '\nURL preview: ' + url.substring(0, 100) + '...\n';
+            debug.textContent += '\nURL preview: ' + url.substring(0, 80) + '...\n';
             
             const ndef = new NDEFReader();
             await ndef.write({ records: [{ recordType: "url", data: url }] });
