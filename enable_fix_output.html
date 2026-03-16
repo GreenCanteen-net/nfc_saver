@@ -7,46 +7,44 @@
     <style>
         body { font-family: Arial; padding: 20px; text-align: center; }
         button { font-size: 24px; padding: 20px 40px; margin: 20px; background: #ff6600; color: white; border: none; border-radius: 10px; }
+        button:disabled { background: #ccc; }
         .success { color: green; }
         .error { color: red; }
         .info { color: blue; }
         .warning { color: orange; }
         table { margin: 20px auto; border-collapse: collapse; }
         td, th { border: 1px solid #ccc; padding: 8px; text-align: left; }
+        input[type="number"] { width: 60px; font-size: 16px; }
     </style>
 </head>
 <body>
     <h1>Enable FIX_OUTPUT</h1>
     <p class="warning"><b>Warning:</b> This locks the lamp to fixed brightness!</p>
     
-    <h3>Settings to be written:</h3>
+    <h3>Settings to modify:</h3>
     <table>
-        <tr><th>Parameter</th><th>Value</th></tr>
-        <tr><td>Holdtime Main</td><td>15s</td></tr>
-        <tr><td>Holdtime Base</td><td>30s</td></tr>
-        <tr><td>Brightness Main</td><td>50%</td></tr>
-        <tr><td>Brightness Base</td><td>10%</td></tr>
-        <tr><td>Brightness Standby</td><td>0%</td></tr>
-        <tr><td>Brightness Fix</td><td>100%</td></tr>
-        <tr><td>Standby Mode</td><td>On</td></tr>
-        <tr><td>Rise Time</td><td>20</td></tr>
-        <tr><td>Fall Time</td><td>60</td></tr>
-        <tr><td>Radar Sensitivity</td><td>245</td></tr>
-        <tr><td>Daylight Control</td><td>Off</td></tr>
+        <tr><th>Parameter</th><th>New Value</th></tr>
         <tr style="background:#ffe0e0"><td><b>FIX_OUTPUT</b></td><td><b>ENABLED (1)</b></td></tr>
+        <tr style="background:#ffe0e0"><td><b>Brightness Fix</b></td><td><input type="number" id="fixBrightness" value="100" min="0" max="100">%</td></tr>
     </table>
+    <p><i>All other settings will be preserved from the lamp's current configuration.</i></p>
     
-    <button onclick="readNFC()">1. Read NFC (Debug)</button>
-    <button onclick="writeNFC()">2. Write to Lamp (Enable FIX_OUTPUT)</button>
+    <button onclick="readAndPrepare()" id="btnRead">1. Read Current Config</button>
+    <button onclick="writeNFC()" id="btnWrite" disabled>2. Write Changes</button>
     
     <p id="status"></p>
-    <pre id="debug" style="text-align:left; background:#f0f0f0; padding:10px; margin:20px; font-size:11px; max-height:300px; overflow:auto;"></pre>
+    <pre id="debug" style="text-align:left; background:#f0f0f0; padding:10px; margin:20px; font-size:11px; max-height:400px; overflow:auto;"></pre>
 
     <script>
-    async function readNFC() {
+    let currentParams = {};  // Store parsed t02 parameters
+    
+    async function readAndPrepare() {
         const status = document.getElementById('status');
         const debug = document.getElementById('debug');
+        const btnWrite = document.getElementById('btnWrite');
         debug.textContent = '';
+        btnWrite.disabled = true;
+        currentParams = {};
         
         if (!('NDEFReader' in window)) {
             status.innerHTML = '<span class="error">Web NFC not supported. Use Chrome on Android.</span>';
@@ -54,7 +52,7 @@
         }
 
         try {
-            status.innerHTML = '<span class="info">Hold phone to lamp NFC to READ...</span>';
+            status.innerHTML = '<span class="info">Hold phone to lamp NFC to READ current config...</span>';
             const ndef = new NDEFReader();
             const controller = new AbortController();
             
@@ -62,63 +60,59 @@
             
             ndef.onreading = event => {
                 controller.abort();
-                debug.textContent = 'Serial Number: ' + event.serialNumber + '\n';
-                debug.textContent += 'Records found: ' + event.message.records.length + '\n\n';
+                const decoder = new TextDecoder();
                 
-                let recordNum = 0;
                 for (const record of event.message.records) {
-                    debug.textContent += `=== Record ${recordNum} ===\n`;
-                    debug.textContent += `  recordType: "${record.recordType}"\n`;
-                    debug.textContent += `  mediaType: "${record.mediaType || 'none'}"\n`;
-                    debug.textContent += `  id: "${record.id || 'none'}"\n`;
-                    debug.textContent += `  encoding: "${record.encoding || 'none'}"\n`;
-                    debug.textContent += `  lang: "${record.lang || 'none'}"\n`;
-                    
                     if (record.data) {
-                        const arr = new Uint8Array(record.data.buffer);
-                        debug.textContent += `  data length: ${arr.length} bytes\n`;
+                        const text = decoder.decode(record.data);
+                        debug.textContent = 'Read ' + text.length + ' bytes\n\n';
                         
-                        // Try to decode as text
-                        try {
-                            const decoder = new TextDecoder();
-                            const text = decoder.decode(record.data);
-                            debug.textContent += `  as text: "${text.substring(0, 500)}"\n`;
+                        // Parse all t02 parameters (settings)
+                        const matches = text.matchAll(/t02n([0-9a-f]{2})v([0-9a-f]{8})x/gi);
+                        debug.textContent += 'Current t02 (setting) parameters:\n';
+                        
+                        for (const match of matches) {
+                            const num = match[1].toLowerCase();
+                            const val = match[2].toLowerCase();
+                            currentParams[num] = val;
                             
-                            // Show 16-byte blocks - show more to see all params including n0b
-                            if (text.length > 50) {
-                                debug.textContent += '\n  Block view:\n';
-                                for (let i = 0; i < Math.min(text.length, 600); i += 16) {
-                                    const chunk = text.substring(i, i + 16);
-                                    debug.textContent += `    [${i.toString().padStart(3)}]: "${chunk}"\n`;
-                                }
-                                debug.textContent += '\n  Looking for FIX_OUTPUT (t02n0b):\n';
-                                const n0bMatch = text.match(/t02n0bv([0-9a-f]{8})/i);
-                                if (n0bMatch) {
-                                    const val = parseInt(n0bMatch[1], 16);
-                                    debug.textContent += `    t02n0b = ${n0bMatch[1]} → FIX_OUTPUT is ${val === 0 ? 'DISABLED ❌' : 'ENABLED ✓'}\n`;
-                                } else {
-                                    debug.textContent += '    t02n0b NOT FOUND in NFC data!\n';
-                                }
-                            }
-                        } catch(e) {
-                            debug.textContent += `  (not text decodable)\n`;
+                            // Decode known params for display
+                            const intVal = parseInt(val, 16);
+                            let name = 'n' + num;
+                            if (num === '01') name = 'Holdtime Main';
+                            else if (num === '02') name = 'Holdtime Base';
+                            else if (num === '03') name = 'Brightness Main';
+                            else if (num === '04') name = 'Brightness Base';
+                            else if (num === '05') name = 'Brightness Standby';
+                            else if (num === '06') name = 'Brightness Fix';
+                            else if (num === '07') name = 'Standby Mode';
+                            else if (num === '09') name = 'Rise Time';
+                            else if (num === '0a') name = 'Fall Time';
+                            else if (num === '0b') name = 'FIX_OUTPUT';
+                            else if (num === '0c') name = 'Radar Sensitivity';
+                            else if (num === '11') name = 'Daylight Control';
+                            
+                            debug.textContent += `  ${name} (n${num}): ${val} = ${intVal}\n`;
                         }
                         
-                        // Show raw hex
-                        debug.textContent += `  hex: ${Array.from(arr.slice(0, 100)).map(b => b.toString(16).padStart(2, '0')).join(' ')}\n`;
-                        if (arr.length > 100) debug.textContent += '  ...(truncated)\n';
-                    } else {
-                        debug.textContent += `  data: null\n`;
+                        debug.textContent += '\nFound ' + Object.keys(currentParams).length + ' t02 parameters.\n';
+                        
+                        // Show current values
+                        if (currentParams['0b']) {
+                            const fixVal = parseInt(currentParams['0b'], 16);
+                            debug.textContent += '\nCurrent FIX_OUTPUT: ' + (fixVal === 0 ? 'DISABLED' : 'ENABLED') + '\n';
+                        }
+                        if (currentParams['06']) {
+                            const fixBright = parseInt(currentParams['06'], 16);
+                            debug.textContent += 'Current Brightness Fix: ' + fixBright + '%\n';
+                            document.getElementById('fixBrightness').value = fixBright;
+                        }
+                        
+                        debug.textContent += '\n✓ Ready to write. Click "Write Changes" button.\n';
+                        btnWrite.disabled = false;
+                        status.innerHTML = '<span class="success">✓ Config read. Now UNPLUG lamp, then click "Write Changes".</span>';
                     }
-                    debug.textContent += '\n';
-                    recordNum++;
                 }
-                
-                if (event.message.records.length === 0) {
-                    debug.textContent += 'No NDEF records found on tag!\n';
-                }
-                
-                status.innerHTML = '<span class="success">✓ Read complete. See debug output above.</span>';
             };
             
             ndef.onreadingerror = () => {
@@ -132,6 +126,12 @@
 
     async function writeNFC() {
         const status = document.getElementById('status');
+        const debug = document.getElementById('debug');
+        
+        if (Object.keys(currentParams).length === 0) {
+            status.innerHTML = '<span class="error">No config loaded. Read first!</span>';
+            return;
+        }
         
         if (!('NDEFReader' in window)) {
             status.innerHTML = '<span class="error">Web NFC not supported. Use Chrome on Android.</span>';
@@ -139,68 +139,54 @@
         }
 
         try {
-            status.innerHTML = '<span class="info">Hold phone to lamp NFC...</span>';
+            status.innerHTML = '<span class="info">Hold phone to lamp NFC (should be UNPLUGGED)...</span>';
             
-            // Fixed parameters + FIX_OUTPUT=1
-            // Format: tTTnNNvVVVVVVVVx (16 chars each, starts with 't', ends with 'x')
-            // IMPORTANT: Match exact format from web_nfc_fa_tool:
-            // Total URL must be exactly 860 chars
+            // Modify only FIX_OUTPUT and Brightness Fix
+            const newFixBrightness = parseInt(document.getElementById('fixBrightness').value) || 100;
+            currentParams['0b'] = '00000001';  // FIX_OUTPUT = ENABLED
+            currentParams['06'] = newFixBrightness.toString(16).padStart(8, '0');  // Brightness Fix
             
-            // Build params (12 settings * 16 chars = 192 chars)
-            const params = 
-                't02n01v0000000fx' +  // Holdtime Main: 15s
-                't02n02v0000001ex' +  // Holdtime Base: 30s
-                't02n03v00000032x' +  // Brightness Main: 50%
-                't02n04v0000000ax' +  // Brightness Base: 10%
-                't02n05v00000000x' +  // Brightness Standby: 0%
-                't02n06v00000064x' +  // Brightness Fix: 100%
-                't02n07v00000001x' +  // Standby Mode: On
-                't02n09v00000014x' +  // Rise Time: 20
-                't02n0av0000003cx' +  // Fall Time: 60
-                't02n0bv00000001x' +  // FIX_OUTPUT: ENABLED
-                't02n0cv000000f5x' +  // Radar Sensitivity: 245
-                't02n11v00000000x';   // Daylight Control: Off
+            // Build params string from current params (sorted by param number)
+            const sortedKeys = Object.keys(currentParams).sort();
+            let params = '';
+            for (const num of sortedKeys) {
+                params += 't02n' + num + 'v' + currentParams[num] + 'x';
+            }
             
-            console.log('params.length:', params.length);  // Should be 192
+            debug.textContent += '\n--- WRITING ---\n';
+            debug.textContent += 'Modified: FIX_OUTPUT=1, Brightness Fix=' + newFixBrightness + '%\n';
+            debug.textContent += 'Params length: ' + params.length + ' chars\n';
             
-            // Result = params + x padding to exactly 800 chars total
-            const xPadding = 800 - params.length;
-            console.log('xPadding:', xPadding);  // Should be 608
-            const result = params + 'x'.repeat(xPadding);
-            console.log('result.length:', result.length);  // Should be 800
+            // Pad to 800 chars
+            const result = params + 'x'.repeat(Math.max(0, 800 - params.length));
             
-            // URL base: domain/?data= padded to 52 chars
-            const urlBase = 'nfc.ledcity.io/?data=';  // 21 chars
-            console.log('urlBase.length:', urlBase.length);  // Should be 21
-            const urlXPadding = 52 - urlBase.length;
-            console.log('urlXPadding:', urlXPadding);  // Should be 31
-            const urlPadded = urlBase + 'x'.repeat(urlXPadding);
-            console.log('urlPadded.length:', urlPadded.length);  // Should be 52
+            // Build URL (must be exactly 860 chars)
+            const urlBase = 'nfc.ledcity.io/?data=';
+            const urlPadded = urlBase + 'x'.repeat(52 - urlBase.length);
+            let url = 'https://' + urlPadded + result;
             
-            // Final URL: https:// + urlPadded + result
-            const url = 'https://' + urlPadded + result;
-            console.log('Final URL length:', url.length);  // MUST be 860
+            // Adjust to exactly 860 chars
+            if (url.length < 860) {
+                url = 'https://' + urlPadded + params + 'x'.repeat(860 - 8 - 52 - params.length);
+            } else if (url.length > 860) {
+                url = url.substring(0, 860);
+            }
+            
+            debug.textContent += 'Final URL length: ' + url.length + ' (must be 860)\n';
             
             if (url.length !== 860) {
-                status.innerHTML = '<span class="error">ERROR: URL length is ' + url.length + ', expected 860!</span>';
+                status.innerHTML = '<span class="error">ERROR: URL length is ' + url.length + '</span>';
                 return;
             }
             
-            // Show debug info
-            const debug = document.getElementById('debug');
-            debug.textContent = 'Writing URL with lengths:\n';
-            debug.textContent += '  params: ' + params.length + ' (expect 192)\n';
-            debug.textContent += '  result: ' + result.length + ' (expect 800)\n';
-            debug.textContent += '  urlPadded: ' + urlPadded.length + ' (expect 52)\n';
-            debug.textContent += '  final URL: ' + url.length + ' (expect 860)\n\n';
-            debug.textContent += 'URL preview:\n' + url.substring(0, 100) + '...\n';
-            
             const ndef = new NDEFReader();
-            await ndef.write({
-                records: [{ recordType: "url", data: url }]
-            });
+            await ndef.write({ records: [{ recordType: "url", data: url }] });
             
-            status.innerHTML = '<span class="warning">✓ Done! Lamp will reboot with FIX_OUTPUT ENABLED.</span>';
+            debug.textContent += '\n✓ Write complete!\n';
+            debug.textContent += 'FIX_OUTPUT = ENABLED\n';
+            debug.textContent += 'Brightness Fix = ' + newFixBrightness + '%\n';
+            
+            status.innerHTML = '<span class="warning">✓ Done! Now PLUG IN the lamp to apply FIX_OUTPUT.</span>';
             
         } catch (error) {
             status.innerHTML = '<span class="error">Error: ' + error.message + '</span>';
