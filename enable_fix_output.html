@@ -87,12 +87,10 @@
                         
                         // Display t02 params  
                         debug.textContent += '\nCurrent t02 (setting) parameters:\n';
-                        const matches = text.matchAll(/t02n([0-9a-f]{2})v([0-9a-f]{8})x/gi);
+                        const t02 = currentParams['02'] || {};
                         
-                        for (const match of matches) {
-                            const num = match[1].toLowerCase();
-                            const val = match[2].toLowerCase();
-                            currentParams[num] = val;
+                        for (const num of Object.keys(t02).sort()) {
+                            const val = t02[num];
                             
                             // Decode known params for display
                             const intVal = parseInt(val, 16);
