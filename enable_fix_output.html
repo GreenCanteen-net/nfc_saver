@@ -143,7 +143,13 @@
             
             // Fixed parameters + FIX_OUTPUT=1
             // Format: tTTnNNvVVVVVVVVx (16 chars each, starts with 't', ends with 'x')
-            const data = 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' +  // 31 chars padding (blocks 3-4)
+            // IMPORTANT: Match exact format from web_nfc_fa_tool:
+            // - https:// (8) + nfc.ledcity.io/?data= (21) + 31 x's = 60 chars prefix
+            // - params + padding = 800 chars
+            // - Total: 860 chars exactly
+            
+            // Build params (12 settings * 16 chars = 192 chars)
+            const params = 
                 't02n01v0000000fx' +  // Holdtime Main: 15s
                 't02n02v0000001ex' +  // Holdtime Base: 30s
                 't02n03v00000032x' +  // Brightness Main: 50%
@@ -155,10 +161,19 @@
                 't02n0av0000003cx' +  // Fall Time: 60
                 't02n0bv00000001x' +  // FIX_OUTPUT: ENABLED
                 't02n0cv000000f5x' +  // Radar Sensitivity: 245
-                't02n11v00000000x' +  // Daylight Control: Off
-                'x'.repeat(500);      // Padding
+                't02n11v00000000x';   // Daylight Control: Off
             
-            const url = 'https://nfc.ledcity.io/?data=' + data + '&flag=exportsettings';
+            // Pad params to exactly 800 chars (params are in 'result' variable in original code)
+            const result = params + 'x'.repeat(800 - params.length);
+            
+            // Build URL prefix (domain + path padded to 52 chars)
+            const urlBase = 'nfc.ledcity.io/?data=';  // 21 chars
+            const urlPadded = urlBase + 'x'.repeat(52 - urlBase.length);  // 31 x's
+            
+            // Final URL: protocol + padded domain/path + params
+            const url = 'https://' + urlPadded + result;  // 8 + 52 + 800 = 860 chars
+            
+            console.log('URL length:', url.length);  // Should be 860
             
             const ndef = new NDEFReader();
             await ndef.write({
