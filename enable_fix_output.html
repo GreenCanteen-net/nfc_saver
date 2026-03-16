@@ -147,18 +147,12 @@
 
         button:not(:disabled):hover { opacity: 0.88; box-shadow: 0 4px 12px rgba(33,44,86,0.2); }
 
-        #btnRead {
-            background: var(--primary);
-            color: var(--white);
-        }
-
-        #btnWrite {
+        #btnAction {
             background: var(--accent);
             color: var(--primary);
         }
 
-        button:disabled,
-        #btnWrite:disabled {
+        button:disabled {
             background: var(--grey-light);
             color: var(--grey-mid);
             cursor: not-allowed;
@@ -207,8 +201,7 @@
         <p class="hint">Core settings are preserved from the lamp. Firmware restores additional params on boot.</p>
 
         <div class="actions">
-            <button onclick="readAndPrepare()" id="btnRead">1. Read Current Config</button>
-            <button onclick="writeNFC()" id="btnWrite" disabled>2. Write Changes</button>
+            <button onclick="readAndWrite()" id="btnAction" aria-label="Read NFC configuration and apply changes to lamp">Apply Changes</button>
         </div>
 
         <p id="status"></p>
@@ -238,36 +231,37 @@
     
     let currentParams = {};
     
-    async function readAndPrepare() {
+    async function readAndWrite() {
         const status = document.getElementById('status');
         const debug = document.getElementById('debug');
-        const btnWrite = document.getElementById('btnWrite');
+        const btnAction = document.getElementById('btnAction');
         debug.textContent = '';
-        btnWrite.disabled = true;
         currentParams = {};
-        
+        btnAction.disabled = true;
+
         if (!('NDEFReader' in window)) {
             status.innerHTML = '<span class="error">Web NFC not supported. Use Chrome on Android.</span>';
+            btnAction.disabled = false;
             return;
         }
 
         try {
-            status.innerHTML = '<span class="info">Hold phone to lamp NFC to READ current config...</span>';
+            status.innerHTML = '<span class="info">Hold phone to lamp NFC and keep still...</span>';
             const ndef = new NDEFReader();
             const controller = new AbortController();
-            
+
             await ndef.scan({ signal: controller.signal });
-            
-            ndef.onreading = event => {
+
+            ndef.onreading = async event => {
                 controller.abort();
                 const decoder = new TextDecoder();
-                
+                try {
                 for (const record of event.message.records) {
                     if (record.data) {
                         const text = decoder.decode(record.data);
                         debug.textContent = 'Read ' + text.length + ' bytes\n';
                         debug.textContent += 'Domain: ' + (text.includes('ledcity.io') ? 'ledcity.io OK' : 'UNKNOWN') + '\n\n';
-                        
+
                         // Parse all params from NFC
                         const allParams = {};
                         let totalFound = 0;
@@ -279,9 +273,9 @@
                             allParams[type + '_' + num] = val;
                             totalFound++;
                         }
-                        
+
                         debug.textContent += 'Total params on NFC: ' + totalFound + '\n\n';
-                        
+
                         // Extract only the 12 safe params
                         debug.textContent += 'Core params (will be written back):\n';
                         for (const num of Object.keys(SAFE_PARAMS).sort()) {
@@ -297,7 +291,7 @@
                                 debug.textContent += '  ' + info.name + ' (n' + num + '): NOT FOUND, default ' + info.defaultVal + '\n';
                             }
                         }
-                        
+
                         // Show skipped params
                         const skippedNums = Object.keys(allParams)
                             .filter(k => k.startsWith('02_') && !SAFE_PARAMS[k.substring(3)])
@@ -305,113 +299,102 @@
                         if (skippedNums.length > 0) {
                             debug.textContent += '\nSkipped params (firmware restores on boot): ' + skippedNums.join(', ') + '\n';
                         }
-                        
+
                         debug.textContent += '\nUsing ' + Object.keys(currentParams).length + ' safe params.\n';
-                        
+
                         const fixVal = parseInt(currentParams['0b'], 16);
                         debug.textContent += 'Current FIX_OUTPUT: ' + (fixVal === 0 ? 'DISABLED -> will set to 1' : 'ENABLED') + '\n';
-                        
+
                         if (currentParams['06']) {
                             const fixBright = parseInt(currentParams['06'], 16);
                             debug.textContent += 'Current Brightness Fix: ' + fixBright + '%\n';
                             document.getElementById('fixBrightness').value = fixBright;
                         }
-                        
-                        debug.textContent += '\nReady. UNPLUG lamp, then click "Write Changes".\n';
-                        btnWrite.disabled = false;
-                        status.innerHTML = '<span class="success">Config read. Now UNPLUG lamp, then click "Write Changes".</span>';
+
+                        // Write back immediately after reading
+                        try {
+                            status.innerHTML = '<span class="info">Config read. Writing changes, keep phone on NFC...</span>';
+
+                            // Modify FIX_OUTPUT and Brightness Fix
+                            const newFixBrightness = parseInt(document.getElementById('fixBrightness').value) || 100;
+                            currentParams['0b'] = '00000001';  // FIX_OUTPUT = ENABLED
+                            currentParams['06'] = newFixBrightness.toString(16).padStart(8, '0');  // Brightness Fix
+
+                            // Build params string - only 12 safe params in sorted order
+                            let params = '';
+                            const sortedNums = Object.keys(currentParams).sort();
+                            for (const num of sortedNums) {
+                                params += 't02n' + num + 'v' + currentParams[num] + 'x';
+                            }
+
+                            debug.textContent += '\n--- WRITING ---\n';
+                            debug.textContent += 'Modified: FIX_OUTPUT=1, Brightness Fix=' + newFixBrightness + '%\n';
+                            debug.textContent += 'Total params: ' + sortedNums.length + '\n';
+                            debug.textContent += 'Params string length: ' + params.length + ' chars\n';
+
+                            // Show what we're writing
+                            debug.textContent += '\nParams being written:\n';
+                            for (const num of sortedNums) {
+                                const highlight = (num === '0b' || num === '06') ? ' <<< CHANGED' : '';
+                                debug.textContent += '  t02n' + num + 'v' + currentParams[num] + 'x' + highlight + '\n';
+                            }
+
+                            // Build URL with MANDATORY 31 x's padding after data=
+                            const urlPrefix = 'https://nfc.ledcity.io/?data=';
+                            const blockPadding = 'x'.repeat(31);  // blocks 3-4 validation
+                            const paramArea = 800;  // blocks 5-54 = 50 blocks * 16 bytes
+                            const trailingPad = 'x'.repeat(paramArea - params.length);
+                            const url = urlPrefix + blockPadding + params + trailingPad;
+
+                            debug.textContent += '\nFinal URL length: ' + url.length + ' (must be 860)\n';
+
+                            // Verify params in URL
+                            const fixCheck = url.match(/t02n0bv([0-9a-f]{8})x/i);
+                            if (fixCheck) {
+                                debug.textContent += 'Verify t02n0b in URL: ' + fixCheck[1] + (fixCheck[1] === '00000001' ? ' ENABLED OK' : ' NOT ENABLED!') + '\n';
+                            } else {
+                                debug.textContent += 'ERROR: t02n0b NOT FOUND in URL!\n';
+                            }
+
+                            if (url.length !== 860) {
+                                status.innerHTML = '<span class="error">ERROR: URL length is ' + url.length + ', expected 860</span>';
+                                return;
+                            }
+
+                            debug.textContent += '\nURL preview: ' + url.substring(0, 80) + '...\n';
+
+                            const writer = new NDEFReader();
+                            await writer.write({ records: [{ recordType: "url", data: url }] });
+
+                            debug.textContent += '\nWrite complete!\n';
+                            debug.textContent += 'FIX_OUTPUT = ENABLED (1)\n';
+                            debug.textContent += 'Brightness Fix = ' + newFixBrightness + '%\n';
+                            debug.textContent += '\nNow PLUG IN the lamp to apply FIX_OUTPUT.\n';
+
+                            status.innerHTML = '<span class="warning">Done! Now PLUG IN the lamp to apply FIX_OUTPUT.</span>';
+
+                        } catch (writeError) {
+                            status.innerHTML = '<span class="error">Write error: ' + writeError.message + '</span>';
+                            debug.textContent += '\nWRITE ERROR: ' + writeError.message + '\n';
+                        }
                     }
                 }
+                } catch (readError) {
+                    status.innerHTML = '<span class="error">Error: ' + readError.message + '</span>';
+                    debug.textContent += '\nERROR: ' + readError.message + '\n';
+                } finally {
+                    btnAction.disabled = false;
+                }
             };
-            
+
             ndef.onreadingerror = () => {
                 status.innerHTML = '<span class="error">Error reading NFC tag</span>';
+                btnAction.disabled = false;
             };
-            
+
         } catch (error) {
             status.innerHTML = '<span class="error">Error: ' + error.message + '</span>';
-        }
-    }
-
-    async function writeNFC() {
-        const status = document.getElementById('status');
-        const debug = document.getElementById('debug');
-        
-        if (Object.keys(currentParams).length === 0) {
-            status.innerHTML = '<span class="error">No config loaded. Read first!</span>';
-            return;
-        }
-        
-        if (!('NDEFReader' in window)) {
-            status.innerHTML = '<span class="error">Web NFC not supported. Use Chrome on Android.</span>';
-            return;
-        }
-
-        try {
-            status.innerHTML = '<span class="info">Hold phone to lamp NFC (should be UNPLUGGED)...</span>';
-            
-            // Modify FIX_OUTPUT and Brightness Fix
-            const newFixBrightness = parseInt(document.getElementById('fixBrightness').value) || 100;
-            currentParams['0b'] = '00000001';  // FIX_OUTPUT = ENABLED
-            currentParams['06'] = newFixBrightness.toString(16).padStart(8, '0');  // Brightness Fix
-            
-            // Build params string - only 12 safe params in sorted order
-            let params = '';
-            const sortedNums = Object.keys(currentParams).sort();
-            for (const num of sortedNums) {
-                params += 't02n' + num + 'v' + currentParams[num] + 'x';
-            }
-            
-            debug.textContent += '\n--- WRITING ---\n';
-            debug.textContent += 'Modified: FIX_OUTPUT=1, Brightness Fix=' + newFixBrightness + '%\n';
-            debug.textContent += 'Total params: ' + sortedNums.length + '\n';
-            debug.textContent += 'Params string length: ' + params.length + ' chars\n';
-            
-            // Show what we're writing
-            debug.textContent += '\nParams being written:\n';
-            for (const num of sortedNums) {
-                const name = SAFE_PARAMS[num] ? SAFE_PARAMS[num].name : num;
-                const highlight = (num === '0b' || num === '06') ? ' <<< CHANGED' : '';
-                debug.textContent += '  t02n' + num + 'v' + currentParams[num] + 'x' + highlight + '\n';
-            }
-            
-            // Build URL with MANDATORY 31 x's padding after data=
-            const urlPrefix = 'https://nfc.ledcity.io/?data=';
-            const blockPadding = 'x'.repeat(31);  // blocks 3-4 validation
-            const paramArea = 800;  // blocks 5-54 = 50 blocks * 16 bytes
-            const trailingPad = 'x'.repeat(paramArea - params.length);
-            const url = urlPrefix + blockPadding + params + trailingPad;
-            
-            debug.textContent += '\nFinal URL length: ' + url.length + ' (must be 860)\n';
-            
-            // Verify params in URL
-            const fixCheck = url.match(/t02n0bv([0-9a-f]{8})x/i);
-            if (fixCheck) {
-                debug.textContent += 'Verify t02n0b in URL: ' + fixCheck[1] + (fixCheck[1] === '00000001' ? ' ENABLED OK' : ' NOT ENABLED!') + '\n';
-            } else {
-                debug.textContent += 'ERROR: t02n0b NOT FOUND in URL!\n';
-            }
-            
-            if (url.length !== 860) {
-                status.innerHTML = '<span class="error">ERROR: URL length is ' + url.length + ', expected 860</span>';
-                return;
-            }
-            
-            debug.textContent += '\nURL preview: ' + url.substring(0, 80) + '...\n';
-            
-            const ndef = new NDEFReader();
-            await ndef.write({ records: [{ recordType: "url", data: url }] });
-            
-            debug.textContent += '\nWrite complete!\n';
-            debug.textContent += 'FIX_OUTPUT = ENABLED (1)\n';
-            debug.textContent += 'Brightness Fix = ' + newFixBrightness + '%\n';
-            debug.textContent += '\nNow PLUG IN the lamp and verify with a read.\n';
-            
-            status.innerHTML = '<span class="warning">Done! Now PLUG IN the lamp to apply FIX_OUTPUT.</span>';
-            
-        } catch (error) {
-            status.innerHTML = '<span class="error">Error: ' + error.message + '</span>';
-            debug.textContent += '\nERROR: ' + error.message + '\n';
+            btnAction.disabled = false;
         }
     }
     </script>
