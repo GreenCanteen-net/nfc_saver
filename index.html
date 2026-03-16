@@ -1,50 +1,81 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="de">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NFC Saver</title>
     <style>
         :root {
-            --primary:    #212c56;
-            --accent:     #ffff66;
-            --grey-light: #ebebeb;
-            --grey-mid:   #909090;
-            --grey-dark:  #5b5b5b;
-            --white:      #ffffff;
-            --black:      #000000;
+            --bg:           #212c56;
+            --text:         #ffffff;
+            --text-muted:   #ebebeb;
+            --text-subtle:  #909090;
+            --accent:       #ffff66;
+            --accent-hover: #EEE400;
+            --border:       #5B5B5B;
+            --border-light: #717877;
+            --white:        #ffffff;
+
+            --space-xs: 0.25rem;
+            --space-sm: 0.5rem;
+            --space-md: 1rem;
+            --space-lg: 1.5rem;
+            --space-xl: 2.5rem;
         }
 
-        * {
+        *, *::before, *::after {
             box-sizing: border-box;
         }
 
         body {
             margin: 0;
             min-height: 100vh;
-            font-family: Arial, Helvetica, sans-serif;
-            background: var(--grey-light);
-            color: var(--black);
+            font-family: Avenir, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+            background:
+                radial-gradient(ellipse 90% 60% at 50% -15%, rgba(255,255,102,0.14) 0%, transparent 55%),
+                var(--bg);
+            color: var(--text);
             display: flex;
             flex-direction: column;
             align-items: center;
         }
 
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E");
+            opacity: 0.045;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        body::after {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: var(--accent);
+            z-index: 100;
+        }
+
         header {
+            position: relative;
+            z-index: 1;
             width: 100%;
-            background: var(--primary);
-            color: var(--white);
-            padding: 0 32px;
+            padding: var(--space-lg) clamp(1rem, 3vw, 2rem);
             display: flex;
             align-items: center;
-            gap: 16px;
+            gap: var(--space-md);
             min-height: 64px;
         }
 
         header h1 {
             margin: 0;
             font-size: 1.5rem;
-            font-weight: 700;
+            font-weight: 800;
             letter-spacing: 0.02em;
         }
 
@@ -52,16 +83,22 @@
             font-size: 0.85rem;
             color: var(--accent);
             font-weight: 400;
+            letter-spacing: 0.02em;
         }
 
         main {
-            width: min(800px, 100%);
-            padding: 40px 24px 48px;
+            position: relative;
+            z-index: 1;
+            width: min(720px, 100%);
+            background: var(--white);
+            color: var(--bg);
+            flex: 1;
+            padding: var(--space-xl) clamp(1rem, 3vw, 2rem) calc(var(--space-xl) + 2rem);
         }
 
         .intro {
-            color: var(--grey-dark);
-            margin: 0 0 32px;
+            color: var(--text-subtle);
+            margin: 0 0 var(--space-xl);
             line-height: 1.6;
             font-size: 1rem;
         }
@@ -69,34 +106,39 @@
         .cards {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-            gap: 20px;
+            gap: var(--space-lg);
         }
 
         .card {
             display: block;
             text-decoration: none;
-            color: var(--black);
+            color: var(--bg);
             background: var(--white);
-            border: 1px solid var(--grey-light);
-            border-top: 4px solid var(--primary);
-            border-radius: 4px;
-            padding: 24px;
+            border: 1px solid #e8e8e8;
+            border-top: 4px solid var(--bg);
+            border-radius: 8px;
+            padding: var(--space-lg);
             box-shadow: 0 2px 8px rgba(33, 44, 86, 0.08);
-            transition: box-shadow 150ms ease, border-top-color 150ms ease;
+            transition: box-shadow 0.15s ease, border-top-color 0.15s ease, transform 0.15s ease;
         }
 
         .card:hover,
         .card:focus-visible {
             box-shadow: 0 6px 20px rgba(33, 44, 86, 0.15);
             border-top-color: var(--accent);
+            transform: translateY(-2px);
             outline: none;
+        }
+
+        .card:focus-visible {
+            box-shadow: 0 0 0 3px rgba(255,255,102,0.25), 0 6px 20px rgba(33, 44, 86, 0.15);
         }
 
         .label {
             display: inline-block;
-            margin-bottom: 12px;
+            margin-bottom: var(--space-sm);
             padding: 3px 10px;
-            border-radius: 2px;
+            border-radius: 6px;
             font-size: 0.75rem;
             font-weight: 700;
             letter-spacing: 0.06em;
@@ -105,35 +147,39 @@
 
         .enable {
             background: var(--accent);
-            color: var(--primary);
+            color: var(--bg);
         }
 
         .disable {
-            background: var(--grey-light);
-            color: var(--grey-dark);
+            background: var(--text-muted);
+            color: var(--bg);
         }
 
         .card h2 {
-            margin: 0 0 8px;
+            margin: 0 0 var(--space-sm);
             font-size: 1.2rem;
             font-weight: 700;
-            color: var(--primary);
+            color: var(--bg);
         }
 
         .card p {
             margin: 0;
-            color: var(--grey-dark);
+            color: var(--text-subtle);
             font-size: 0.95rem;
             line-height: 1.5;
         }
 
         .note {
-            margin-top: 32px;
-            padding-top: 20px;
-            border-top: 1px solid var(--grey-mid);
-            color: var(--grey-mid);
+            margin-top: var(--space-xl);
+            padding-top: var(--space-lg);
+            border-top: 1px solid var(--border-light);
+            color: var(--text-subtle);
             font-size: 0.875rem;
             line-height: 1.5;
+        }
+
+        @media (max-width: 480px) {
+            header h1 { font-size: 1.25rem; }
         }
     </style>
 </head>

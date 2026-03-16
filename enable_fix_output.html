@@ -1,51 +1,108 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="de">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Enable FIX_OUTPUT</title>
     <style>
         :root {
-            --primary:    #212c56;
-            --accent:     #ffff66;
-            --grey-light: #ebebeb;
-            --grey-mid:   #909090;
-            --grey-dark:  #5b5b5b;
-            --white:      #ffffff;
-            --black:      #000000;
+            --bg:           #212c56;
+            --text:         #ffffff;
+            --text-muted:   #ebebeb;
+            --text-subtle:  #909090;
+            --accent:       #ffff66;
+            --accent-hover: #EEE400;
+            --border:       #5B5B5B;
+            --border-light: #717877;
+            --white:        #ffffff;
+
+            --space-xs: 0.25rem;
+            --space-sm: 0.5rem;
+            --space-md: 1rem;
+            --space-lg: 1.5rem;
+            --space-xl: 2.5rem;
         }
 
-        * { box-sizing: border-box; }
+        *, *::before, *::after { box-sizing: border-box; }
 
         body {
             margin: 0;
-            font-family: Arial, Helvetica, sans-serif;
-            background: var(--grey-light);
-            color: var(--black);
+            font-family: Avenir, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+            background:
+                radial-gradient(ellipse 90% 60% at 50% -15%, rgba(255,255,102,0.14) 0%, transparent 55%),
+                var(--bg);
+            color: var(--text);
             min-height: 100vh;
             display: flex;
             flex-direction: column;
             align-items: center;
         }
 
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)'/%3E%3C/svg%3E");
+            opacity: 0.045;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        body::after {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: var(--accent);
+            z-index: 100;
+        }
+
         header {
+            position: relative;
+            z-index: 1;
             width: 100%;
-            background: var(--primary);
-            color: var(--white);
-            padding: 0 24px;
+            padding: var(--space-md) clamp(1rem, 3vw, 2rem);
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: var(--space-md);
             min-height: 56px;
         }
 
-        header a {
-            color: var(--accent);
+        .back-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: var(--space-xs);
+            color: var(--text);
             text-decoration: none;
-            font-size: 0.85rem;
+            font-size: 0.9rem;
+            padding: 0.4rem 0.875rem;
+            border: 1px solid rgba(255,255,255,0.35);
+            border-radius: 20px;
+            transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+            white-space: nowrap;
         }
 
-        header a:hover { text-decoration: underline; }
+        .back-btn .arrow {
+            display: inline-block;
+            transition: transform 0.15s ease;
+        }
+
+        .back-btn:hover {
+            background: var(--text);
+            color: var(--bg);
+            border-color: var(--text);
+        }
+
+        .back-btn:hover .arrow {
+            transform: translateX(-3px);
+        }
+
+        .back-btn:focus-visible {
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(255,255,102,0.25);
+        }
 
         header h1 {
             margin: 0;
@@ -54,17 +111,22 @@
         }
 
         main {
+            position: relative;
+            z-index: 1;
             width: min(720px, 100%);
-            padding: 32px 24px 48px;
+            background: var(--white);
+            color: var(--bg);
+            flex: 1;
+            padding: var(--space-xl) clamp(1rem, 3vw, 2rem) calc(var(--space-xl) + 2rem);
         }
 
         .warning-box {
             background: var(--accent);
-            color: var(--primary);
-            border-left: 5px solid var(--primary);
-            border-radius: 2px;
+            color: var(--bg);
+            border-left: 4px solid var(--bg);
+            border-radius: 6px;
             padding: 12px 16px;
-            margin-bottom: 24px;
+            margin-bottom: var(--space-lg);
             font-weight: 700;
             font-size: 0.95rem;
         }
@@ -73,7 +135,7 @@
             margin: 0 0 12px;
             font-size: 1rem;
             font-weight: 700;
-            color: var(--primary);
+            color: var(--bg);
             text-transform: uppercase;
             letter-spacing: 0.04em;
         }
@@ -83,14 +145,14 @@
             border-collapse: collapse;
             margin-bottom: 12px;
             background: var(--white);
-            border: 1px solid var(--grey-mid);
-            border-radius: 2px;
+            border: 1px solid var(--border-light);
+            border-radius: 8px;
             overflow: hidden;
         }
 
         th {
-            background: var(--primary);
-            color: var(--white);
+            background: var(--bg);
+            color: var(--text);
             padding: 10px 14px;
             text-align: left;
             font-size: 0.875rem;
@@ -101,11 +163,11 @@
         td {
             padding: 10px 14px;
             font-size: 0.9rem;
-            border-top: 1px solid var(--grey-light);
+            border-top: 1px solid var(--text-muted);
         }
 
         tr.changed {
-            background: rgba(255, 255, 102, 0.25);
+            background: rgba(255, 255, 102, 0.18);
         }
 
         tr.changed td { font-weight: 700; }
@@ -114,47 +176,66 @@
             width: 70px;
             font-size: 15px;
             padding: 4px 6px;
-            border: 2px solid var(--primary);
-            border-radius: 2px;
+            border: 2px solid var(--bg);
+            border-radius: 6px;
             font-family: inherit;
             text-align: center;
+            transition: border-color 0.15s ease, box-shadow 0.15s ease;
+        }
+
+        input[type="number"]:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(255,255,102,0.25);
         }
 
         .hint {
-            color: var(--grey-dark);
+            color: var(--text-subtle);
             font-size: 0.875rem;
-            margin: 0 0 24px;
+            margin: 0 0 var(--space-lg);
             font-style: italic;
         }
 
         .actions {
             display: flex;
-            gap: 16px;
+            gap: var(--space-md);
             flex-wrap: wrap;
-            margin-bottom: 20px;
+            margin-bottom: var(--space-md);
         }
 
         button {
-            font-family: Arial, Helvetica, sans-serif;
+            font-family: inherit;
             font-size: 1rem;
             font-weight: 700;
             padding: 14px 28px;
             border: none;
-            border-radius: 2px;
+            border-radius: 6px;
             cursor: pointer;
-            transition: opacity 120ms ease, box-shadow 120ms ease;
+            transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
         }
 
-        button:not(:disabled):hover { opacity: 0.88; box-shadow: 0 4px 12px rgba(33,44,86,0.2); }
+        button:not(:disabled):hover {
+            box-shadow: 0 4px 12px rgba(33,44,86,0.2);
+            transform: translateY(-1px);
+        }
+
+        button:not(:disabled):focus-visible {
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(255,255,102,0.25);
+        }
 
         #btnAction {
             background: var(--accent);
-            color: var(--primary);
+            color: var(--bg);
+        }
+
+        #btnAction:not(:disabled):hover {
+            background: var(--accent-hover);
         }
 
         button:disabled {
-            background: var(--grey-light);
-            color: var(--grey-mid);
+            background: var(--text-muted);
+            color: var(--text-subtle);
             cursor: not-allowed;
         }
 
@@ -166,26 +247,26 @@
 
         .success { color: #1a6e2e; font-weight: 700; }
         .error   { color: #b91c1c; font-weight: 700; }
-        .info    { color: var(--primary); font-weight: 700; }
+        .info    { color: var(--bg); font-weight: 700; }
         .warning { color: #92680a; font-weight: 700; }
 
         #debug {
             text-align: left;
-            background: var(--primary);
+            background: var(--bg);
             color: #c8d4f0;
             padding: 14px 16px;
             font-size: 0.8rem;
             line-height: 1.55;
             max-height: 360px;
             overflow-y: auto;
-            border-radius: 2px;
+            border-radius: 6px;
             white-space: pre-wrap;
         }
     </style>
 </head>
 <body>
     <header>
-        <a href="index.html">← Back</a>
+        <a href="index.html" class="back-btn"><span class="arrow">←</span> Back</a>
         <h1>Enable FIX_OUTPUT</h1>
     </header>
 
