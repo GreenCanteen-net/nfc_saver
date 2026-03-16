@@ -172,15 +172,16 @@
                 debug.textContent += '  t02n' + num + 'v' + currentT02Params[num] + 'x' + highlight + '\n';
             }
             
-            // Build URL: https://nfc.ledcity.io/?data= (29 chars) + params + x-padding = 860 total
+            // Build URL with MANDATORY 31 x's padding after data=
+            // NFC memory blocks 3-4 MUST be "=xxxxxxxxxxxxxxx" + "xxxxxxxxxxxxxxxx"
+            // The firmware's check_config_data() validates these bytes exactly!
+            // Params go into blocks 5-54 (= positions 60-859 of URL, = 800 bytes)
+            // URL: https:// (8) + nfc.ledcity.io/?data= (21) + 31 x's + params + x-padding = 860
             const urlPrefix = 'https://nfc.ledcity.io/?data=';
-            const paddingNeeded = 860 - urlPrefix.length - params.length;
-            
-            debug.textContent += '\nURL prefix: ' + urlPrefix.length + ' chars\n';
-            debug.textContent += 'Params: ' + params.length + ' chars\n';
-            debug.textContent += 'Padding: ' + Math.max(0, paddingNeeded) + ' x chars\n';
-            
-            let url = urlPrefix + params + 'x'.repeat(Math.max(0, paddingNeeded));
+            const blockPadding = 'x'.repeat(31);  // MUST have 31 x's for blocks 3-4
+            const paramArea = 800;  // blocks 5-54 = 50 blocks * 16 bytes
+            const trailingPad = 'x'.repeat(Math.max(0, paramArea - params.length));
+            let url = urlPrefix + blockPadding + params + trailingPad;
             
             if (url.length > 860) {
                 debug.textContent += 'WARNING: Truncating from ' + url.length + ' to 860\n';
