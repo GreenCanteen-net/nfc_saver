@@ -34,11 +34,51 @@
         <tr style="background:#e0ffe0"><td><b>FIX_OUTPUT</b></td><td><b>DISABLED (0)</b></td></tr>
     </table>
     
-    <button onclick="writeNFC()">Write to Lamp (Disable FIX_OUTPUT)</button>
+    <button onclick="readNFC()">1. Read NFC (Debug)</button>
+    <button onclick="writeNFC()">2. Write to Lamp (Disable FIX_OUTPUT)</button>
     
     <p id="status"></p>
+    <pre id="debug" style="text-align:left; background:#f0f0f0; padding:10px; margin:20px; font-size:11px; max-height:300px; overflow:auto;"></pre>
 
     <script>
+    async function readNFC() {
+        const status = document.getElementById('status');
+        const debug = document.getElementById('debug');
+        debug.textContent = '';
+        
+        if (!('NDEFReader' in window)) {
+            status.innerHTML = '<span class="error">Web NFC not supported. Use Chrome on Android.</span>';
+            return;
+        }
+
+        try {
+            status.innerHTML = '<span class="info">Hold phone to lamp NFC to READ...</span>';
+            const ndef = new NDEFReader();
+            const controller = new AbortController();
+            
+            await ndef.scan({ signal: controller.signal });
+            
+            ndef.onreading = event => {
+                controller.abort();
+                const decoder = new TextDecoder();
+                for (const record of event.message.records) {
+                    if (record.data) {
+                        const text = decoder.decode(record.data);
+                        debug.textContent = 'Data length: ' + text.length + ' bytes\n\n';
+                        const n0bMatch = text.match(/t02n0bv([0-9a-f]{8})/i);
+                        if (n0bMatch) {
+                            const val = parseInt(n0bMatch[1], 16);
+                            debug.textContent += 't02n0b = ' + n0bMatch[1] + ' → FIX_OUTPUT is ' + (val === 0 ? 'DISABLED ✓' : 'ENABLED') + '\n';
+                        }
+                    }
+                }
+                status.innerHTML = '<span class="success">✓ Read complete.</span>';
+            };
+        } catch (error) {
+            status.innerHTML = '<span class="error">Error: ' + error.message + '</span>';
+        }
+    }
+
     async function writeNFC() {
         const status = document.getElementById('status');
         
@@ -52,21 +92,48 @@
             
             // Fixed parameters + FIX_OUTPUT=0
             // Format: tTTnNNvVVVVVVVVx (16 chars each, starts with 't', ends with 'x')
-            const data = 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' +  // 31 chars padding (blocks 3-4)
+            // IMPORTANT: Match exact format from web_nfc_fa_tool:
+            // - https:// (8) + nfc.ledcity.io/?data= (21) + 31 x's = 60 chars prefix
+            // - params + padding = 800 chars
+            // - Total: 860 chars exactly
+            
+            // Build params (12 settings * 16 chars = 192 chars)
+            const params = 
                 't02n01v0000000fx' +  // Holdtime Main: 15s
                 't02n02v0000001ex' +  // Holdtime Base: 30s
                 't02n03v00000032x' +  // Brightness Main: 50%
                 't02n04v0000000ax' +  // Brightness Base: 10%
                 't02n05v00000000x' +  // Brightness Standby: 0%
+                't02n06v00000064x' +  // Brightness Fix: 100%
                 't02n07v00000001x' +  // Standby Mode: On
                 't02n09v00000014x' +  // Rise Time: 20
                 't02n0av0000003cx' +  // Fall Time: 60
                 't02n0bv00000000x' +  // FIX_OUTPUT: DISABLED
                 't02n0cv000000f5x' +  // Radar Sensitivity: 245
-                't02n11v00000000x' +  // Daylight Control: Off
-                'x'.repeat(500);      // Padding
+                't02n11v00000000x';   // Daylight Control: Off
             
-            const url = 'https://nfc.ledcity.ch/?data=' + data + '&flag=exportsettings';
+            // Pad params to exactly 800 chars
+            const result = params + 'x'.repeat(800 - params.length);
+            
+            // Build URL prefix (domain + path padded to 52 chars)
+            const urlBase = 'nfc.ledcity.io/?data=';  // 21 chars
+            const urlPadded = urlBase + 'x'.repeat(52 - urlBase.length);  // 31 x's
+            
+            // Final URL: protocol + padded domain/path + params
+            const url = 'https://' + urlPadded + result;  // 8 + 52 + 800 = 860 chars
+            
+            if (url.length !== 860) {
+                status.innerHTML = '<span class="error">ERROR: URL length is ' + url.length + ', expected 860!</span>';
+                return;
+            }
+            
+            // Show debug info
+            const debug = document.getElementById('debug');
+            debug.textContent = 'Writing URL with lengths:\n';
+            debug.textContent += '  params: ' + params.length + ' (expect 192)\n';
+            debug.textContent += '  result: ' + result.length + ' (expect 800)\n';
+            debug.textContent += '  final URL: ' + url.length + ' (expect 860)\n\n';
+            debug.textContent += 'URL preview:\n' + url.substring(0, 60) + '...\n';
             
             const ndef = new NDEFReader();
             await ndef.write({
