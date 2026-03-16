@@ -91,12 +91,13 @@
                                     const chunk = text.substring(i, i + 16);
                                     debug.textContent += `    [${i.toString().padStart(3)}]: "${chunk}"\n`;
                                 }
-                                debug.textContent += '\n  Looking for FIX_OUTPUT (n0b):\n';
-                                const n0bMatch = text.match(/n0bv([0-9a-f]{8})/i);
+                                debug.textContent += '\n  Looking for FIX_OUTPUT (t02n0b):\n';
+                                const n0bMatch = text.match(/t02n0bv([0-9a-f]{8})/i);
                                 if (n0bMatch) {
-                                    debug.textContent += `    Found n0b = ${n0bMatch[1]} (${parseInt(n0bMatch[1], 16) === 0 ? 'DISABLED' : 'ENABLED'})\n`;
+                                    const val = parseInt(n0bMatch[1], 16);
+                                    debug.textContent += `    t02n0b = ${n0bMatch[1]} → FIX_OUTPUT is ${val === 0 ? 'DISABLED ❌' : 'ENABLED ✓'}\n`;
                                 } else {
-                                    debug.textContent += '    n0b NOT FOUND in NFC data!\n';
+                                    debug.textContent += '    t02n0b NOT FOUND in NFC data!\n';
                                 }
                             }
                         } catch(e) {
